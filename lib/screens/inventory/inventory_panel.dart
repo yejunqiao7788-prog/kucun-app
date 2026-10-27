@@ -48,14 +48,22 @@ class _InventoryPanelState extends State<InventoryPanel> {
     return _StockSnapshot(res.data, res.stale);
   });
 
+  /// build 里直接读 `_loader.value`，没有 AnimatedBuilder 接手，所以自己挂监听：
+  /// 否则数据回来后没人重绘，页面会一直停在骨架屏。
+  void _repaint() {
+    if (mounted) setState(() {});
+  }
+
   @override
   void initState() {
     super.initState();
+    _loader.addListener(_repaint);
     _loader.load();
   }
 
   @override
   void dispose() {
+    _loader.removeListener(_repaint);
     _search.dispose();
     _loader.dispose();
     super.dispose();

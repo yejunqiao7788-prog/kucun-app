@@ -75,6 +75,7 @@ const Map<String, List<String>> kStrings = <String, List<String>>{
   'auth_welcome': <String>['登录你的租户', 'Sign in to your workspace', 'Увійдіть до робочого простору', 'Đăng nhập không gian làm việc'],
   'auth_email': <String>['邮箱', 'Email', 'Ел. пошта', 'Email'],
   'auth_password': <String>['密码', 'Password', 'Пароль', 'Mật khẩu'],
+  'auth_password_rule': <String>['至少 8 位，且同时含字母和数字', 'At least 8 characters, with letters and digits', 'Щонайменше 8 символи, літери й цифри', 'Tối thiểu 8 ký tự, gồm chữ và số'],
   'auth_sign_in': <String>['登录', 'Sign in', 'Увійти', 'Đăng nhập'],
   'auth_sign_out': <String>['退出登录', 'Sign out', 'Вийти', 'Đăng xuất'],
   'auth_forgot': <String>['忘记密码', 'Forgot password', 'Забули пароль', 'Quên mật khẩu'],
@@ -171,7 +172,6 @@ const Map<String, List<String>> kStrings = <String, List<String>>{
   'ord_finalise': <String>['定稿', 'Finalize', 'Затвердити', 'Chốt đơn'],
   'ord_finalise_hint': <String>['定稿会一次性扣减库存，任一商品不足整单回滚', 'Finalizing deducts stock atomically; any shortfall rolls the whole order back', 'Затвердження списує запаси атомарно; нестача відміняє все', 'Chốt đơn trừ tồn đồng thời; thiếu hàng sẽ hoàn tác cả đơn'],
   'ord_finalised_ok': <String>['订单已定稿，库存已扣减', 'Order finalized and stock deducted', 'Замовлення затверджено, запаси списано', 'Đơn đã chốt và đã trừ tồn'],
-  'ord_deduct_failed': <String>['扣减失败：{detail}', 'Deduction failed: {detail}', 'Збій списання: {detail}', 'Trừ tồn lỗi: {detail}'],
   'ord_show_in_picking': <String>['进入备货清单', 'Show in picking list', 'У список комплектування', 'Hiện trong danh soạn'],
   'ord_picking_list': <String>['备货清单', 'Picking list', 'Список комплектування', 'Danh sách soạn'],
   'ord_picked': <String>['已拣', 'Picked', 'Комплектовано', 'Đã soạn'],
@@ -662,4 +662,9 @@ const Map<String, List<String>> kStrings = <String, List<String>>{
   'mp_trade_terms': <String>['交易条件', 'Trade terms', 'Умови угоди', 'Điều kiện giao dịch'],
   'mp_ttfr': <String>['首次响应时间', 'Time to first reply', 'Час до першої відповіді', 'Thời gian phản hồi đầu'],
   'mp_withdraw': <String>['撤回', 'Withdraw', 'Відкликати', 'Rút lại'],
+  // ---- 新增：me_biz（经营数字收进「我的」，默认打码） ----
+  'me_biz_title': <String>['经营数字', 'Business numbers', 'Бізнес-показники', 'Số liệu kinh doanh'],
+  'me_biz_hint': <String>['默认打码，点右上角眼睛才显示', 'Hidden by default — tap the eye to reveal', 'За замовчуванням приховано — натисніть око, щоб показати', 'Mặc định đã che — chạm biểu tượng mắt để hiện'],
+  'me_biz_show': <String>['显示', 'Show', 'Показати', 'Hiện'],
+  'me_biz_hide': <String>['隐藏', 'Hide', 'Приховати', 'Ẩn'],
 };

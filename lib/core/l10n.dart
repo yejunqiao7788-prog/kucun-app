@@ -138,6 +138,15 @@ class L10n {
   String get authWelcome => raw('auth_welcome');
   String get authEmail => raw('auth_email');
   String get authPassword => raw('auth_password');
+  String get authPasswordRule => raw('auth_password_rule');
+
+  /// 服务端 `role` 字符串 → 本地标签；设置页与邀请预览共用同一张表。
+  String roleLabel(String role) => switch (role) {
+        'super_admin' => setRoleSuper,
+        'admin' => setRoleAdmin,
+        'tenant_admin' => setRoleTenantAdmin,
+        _ => setRoleUser,
+      };
   String get authSignIn => raw('auth_sign_in');
   String get authSignOut => raw('auth_sign_out');
   String get authForgot => raw('auth_forgot');
@@ -226,7 +235,6 @@ class L10n {
   String get ordFinalise => raw('ord_finalise');
   String get ordFinaliseHint => raw('ord_finalise_hint');
   String get ordFinalisedOk => raw('ord_finalised_ok');
-  String ordDeductFailed(Object detail) => fill('ord_deduct_failed', <String, Object>{'detail': detail});
   String get ordShowInPicking => raw('ord_show_in_picking');
   String get ordPickingList => raw('ord_picking_list');
   String get ordPicked => raw('ord_picked');
@@ -699,4 +707,8 @@ class L10n {
   String get mpTradeTerms => raw('mp_trade_terms');
   String get mpTtfr => raw('mp_ttfr');
   String get mpWithdraw => raw('mp_withdraw');
+  String get meBizTitle => raw('me_biz_title');
+  String get meBizHint => raw('me_biz_hint');
+  String get meBizShow => raw('me_biz_show');
+  String get meBizHide => raw('me_biz_hide');
 }

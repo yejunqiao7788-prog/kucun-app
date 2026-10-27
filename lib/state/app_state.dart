@@ -14,6 +14,7 @@ import '../core/l10n.dart';
 import '../core/offline_cache.dart';
 import '../core/session.dart';
 import '../core/storage_service.dart';
+import '../data/entities.dart';
 import '../data/profile.dart';
 import '../data/repositories.dart';
 
@@ -123,7 +124,15 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
 
   Future<void> sendPasswordReset(String email) => session.sendPasswordReset(email);
 
+  /// 服务端密码策略：≥8 位且同时含字母和数字。客户端先挡一道，免得白跑一次 400。
+  static bool passwordTooWeak(String value) =>
+      value.length < 8 ||
+      !RegExp(r'[a-zA-Z]').hasMatch(value) ||
+      !RegExp(r'[0-9]').hasMatch(value);
+
   /// 自助注册：建租户 + 管理员账号一步到位（契约 §5.2）。
+  /// 这三支是服务端的**公开路由**（排在 `requireBusinessUser` 之前），此时手里没有 token
+  /// 是正常状态，必须 `anonymous: true`，否则客户端会自己伪造 401 把注册漏斗堵死。
   Future<void> registerTenant({
     required String email,
     required String password,
@@ -138,17 +147,20 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
         'username': username.trim(),
         'tenant_name': tenantName.trim(),
       },
+      anonymous: true,
     );
     await signIn(email: email, password: password);
   }
 
   /// 邀请链路：先查邀请拿租户名，再注册并落到该租户。
-  Future<UserProfile> lookupInvitation(String code) async {
+  /// 服务端回 `{invitation:{...}}`，不是 profile 形状。
+  Future<InvitationPreview> lookupInvitation(String code) async {
     final Object? data = await api.post(
       '/invitations/lookup',
       body: <String, Object?>{'code': code.trim()},
+      anonymous: true,
     );
-    return UserProfile.fromData(data);
+    return InvitationPreview.fromData(data);
   }
 
   Future<void> registerByInvitation({
@@ -165,6 +177,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
         'password': password,
         'username': username.trim(),
       },
+      anonymous: true,
     );
     await signIn(email: email, password: password);
   }

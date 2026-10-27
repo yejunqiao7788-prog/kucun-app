@@ -43,14 +43,22 @@ class _MarketScreenState extends State<MarketScreen> {
 
   static const List<int> _tabKeys = <int>[0, 1, 2, 3, 4, 5];
 
+  /// 集市首页直接读 `_config.value`（聊天开关、店铺页），这一层没有 AnimatedBuilder，
+  /// 得自己挂监听，否则配置回来后停在首帧的默认值上。
+  void _repaint() {
+    if (mounted) setState(() {});
+  }
+
   @override
   void initState() {
     super.initState();
+    _config.addListener(_repaint);
     unawaited(_config.load());
   }
 
   @override
   void dispose() {
+    _config.removeListener(_repaint);
     _config.dispose();
     super.dispose();
   }
@@ -972,7 +980,7 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
                       if (data.publicSlug != null)
                         KeyValueRow(
                           label: l10n.mpPublicUrl,
-                          value: '${Env.siteBase}/market/${data.publicSlug}',
+                          value: '${Env.siteBase}/market/p/${data.publicSlug}',
                           accent: AppInk.marketplace,
                         ),
                     ],
@@ -1037,24 +1045,21 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
                       enabled: app.canWrite && data.status == ListingStatus.published,
                       onTap: () => _action('boost'),
                     ),
-                    if (data.status == ListingStatus.published)
+                    if (data.status.canPause)
                       _ActionChip(
                         label: l10n.mpPause,
                         icon: Icons.pause_circle_outline_rounded,
                         enabled: app.canWrite,
                         onTap: () => _action('pause'),
                       ),
-                    if (data.status == ListingStatus.paused || data.status == ListingStatus.delisted)
+                    if (data.status.canResume)
                       _ActionChip(
                         label: l10n.mpResume,
                         icon: Icons.play_circle_outline_rounded,
                         enabled: app.canWrite,
                         onTap: () => _action('resume'),
                       ),
-                    if (data.status == ListingStatus.pendingReview ||
-                        data.status == ListingStatus.inReview ||
-                        data.status == ListingStatus.approved ||
-                        data.status == ListingStatus.published)
+                    if (data.status.canWithdraw)
                       _ActionChip(
                         label: l10n.mpWithdraw,
                         icon: Icons.undo_rounded,

@@ -12,7 +12,6 @@ class ValueLoader<T> extends ChangeNotifier {
   String? errorText;
   String? errorCode;
   bool loading = true;
-  bool stale = false;
   DateTime? loadedAt;
 
   Future<void> load() async {

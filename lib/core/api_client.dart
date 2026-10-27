@@ -134,8 +134,9 @@ class ApiClient {
     Map<String, Object?>? query,
     String? tenantId,
     bool heavy = false,
+    bool anonymous = false,
   }) =>
-      _write('POST', path, body, query, tenantId, heavy);
+      _write('POST', path, body, query, tenantId, heavy, anonymous: anonymous);
 
   Future<Object?> patch(
     String path, {
@@ -160,8 +161,9 @@ class ApiClient {
     Map<String, Object?>? body,
     Map<String, Object?>? query,
     String? tenantId,
-    bool heavy,
-  ) async {
+    bool heavy, {
+    bool anonymous = false,
+  }) async {
     final bool hasTenantInBody = body?.containsKey('tenant_id') ?? false;
     final Map<String, Object?> payload = <String, Object?>{
       if (body != null) ...body,
@@ -175,6 +177,7 @@ class ApiClient {
         uri,
         body: payload,
         timeout: heavy ? Env.heavyTimeout : Env.normalTimeout,
+        anonymous: anonymous,
       );
       online.value = true;
       return data;
@@ -185,15 +188,19 @@ class ApiClient {
   }
 
   /// 发一次请求，必要时在 401 后刷新会话并重放一次。
+  ///
+  /// [anonymous] 给注册与邀请这两支公开路由用：它们在服务端排在 `requireBusinessUser`
+  /// 之前，此时客户端手里没有 token 是正常状态，不能本地伪造 401 把漏斗堵死。
   Future<Object?> _send(
     String method,
     Uri uri, {
     Map<String, Object?>? body,
     required Duration timeout,
     bool allowRetryOn401 = true,
+    bool anonymous = false,
   }) async {
-    final String? token = await session.ensureSession();
-    if (token == null) {
+    final String? token = anonymous ? null : await session.ensureSession();
+    if (token == null && !anonymous) {
       throw ApiException(
         status: 401,
         code: 'UNAUTHORIZED',
@@ -205,7 +212,7 @@ class ApiClient {
     try {
       final http.Request request = http.Request(method, uri)
         ..headers.addAll(<String, String>{
-          'Authorization': 'Bearer $token',
+          if (token != null) 'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
           'Accept': 'application/json',
           'X-Request-Id': _newRequestId(),
@@ -238,7 +245,7 @@ class ApiClient {
 
     final Map<String, Object?> envelope = _decodeEnvelope(response);
 
-    if (response.statusCode == 401 && allowRetryOn401) {
+    if (response.statusCode == 401 && allowRetryOn401 && token != null) {
       // 刷新一次再重放原请求；SessionManager 内部已做并发去重。
       final String? refreshed = await session.ensureSession(force: true);
       if (refreshed != null) {

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/access.dart';
-import '../../core/formatters.dart';
 import '../../core/l10n.dart';
 import '../../data/entities.dart';
 import '../../data/repositories.dart';
@@ -17,8 +16,10 @@ import '../../state/list_controller.dart';
 import '../../state/value_loader.dart';
 import '../orders/order_detail_screen.dart';
 
-/// 工作台：一屏看清「有多少货 / 今天动了多少 / 谁在欠钱」，
-/// 并把低频模块收进一排快捷入口，避免底部导航挤成八位。
+/// 工作台：只留「今天该干什么」 —— 待备货的单、快捷入口、最近动态。
+///
+/// 库存数量、货值这类家底数字不在这一页显示，收进「我的」里的经营数字卡，
+/// 主屏被人瞥一眼看不出规模；低频模块仍从这里的一排快捷入口进。
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
 
@@ -29,8 +30,6 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   late final Repos _repos = context.read<AppState>().repos;
 
-  late final ValueLoader<DashboardStats> _stats =
-      ValueLoader<DashboardStats>(() async => (await _repos.dashboard.stats()).data);
   late final ValueLoader<DashboardOrders> _orders =
       ValueLoader<DashboardOrders>(() async => (await _repos.dashboard.orders()).data);
   late final ListController<OperationLog> _logs = ListController<OperationLog>(
@@ -43,21 +42,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
-    _stats.load();
     _orders.load();
     _logs.load();
   }
 
   @override
   void dispose() {
-    _stats.dispose();
     _orders.dispose();
     _logs.dispose();
     super.dispose();
   }
 
   Future<void> _refresh() => Future.wait<void>(<Future<void>>[
-        _stats.refresh(),
         _orders.refresh(),
         _logs.refresh(),
       ]);
@@ -69,7 +65,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     return Scaffold(
       body: AnimatedBuilder(
-        animation: Listenable.merge(<Listenable>[_stats, _orders, _logs]),
+        animation: Listenable.merge(<Listenable>[_orders, _logs]),
         builder: (BuildContext context, Widget? _) => RefreshIndicator(
           onRefresh: _refresh,
           color: AppInk.dashboard,
@@ -95,22 +91,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     onPressed: () => ModuleKey.settings.jumpTo(context),
                   ),
                 ),
-              if (_stats.stale && app.online)
-                NoticeBanner(
-                  text: l10n.commonStaleBanner,
-                  color: AppInk.info,
-                  icon: Icons.history_rounded,
-                ),
               const VGap(14),
-              _StatsGrid(
-                stats: _stats.value,
-                loading: _stats.loading,
-                currency: app.profile.currencySymbol,
-                errorText: _stats.errorText,
-                onRetry: _stats.load,
-                onLowStock: () => RootTabs.openInventory(context),
-              ),
-              const VGap(20),
               SectionHeader(title: l10n.dashQuickActions, accent: AppInk.dashboard),
               QuickActionRow(l10n: l10n, app: app),
               const VGap(22),
@@ -196,99 +177,6 @@ class _Greeting extends StatelessWidget {
         ),
         const VGap(4),
         Text(tenant, style: Theme.of(context).textTheme.bodyMedium),
-      ],
-    );
-  }
-}
-
-class _StatsGrid extends StatelessWidget {
-  const _StatsGrid({
-    required this.stats,
-    required this.loading,
-    required this.currency,
-    required this.errorText,
-    required this.onRetry,
-    required this.onLowStock,
-  });
-
-  final DashboardStats? stats;
-  final bool loading;
-  final String currency;
-  final String? errorText;
-  final VoidCallback onRetry;
-  final VoidCallback onLowStock;
-
-  @override
-  Widget build(BuildContext context) {
-    if (loading && stats == null) return const SkeletonList(count: 4, itemHeight: 96);
-    if (stats == null) {
-      return AppCard(
-        accent: AppInk.dashboard,
-        onTap: onRetry,
-        child: Row(
-          children: <Widget>[
-            Expanded(
-              child: Text(
-                errorText ?? AppState.of(context).l10n.commonErrorTitle,
-                style: Theme.of(context).textTheme.bodyMedium,
-              ),
-            ),
-            const Icon(Icons.refresh_rounded, size: 20),
-          ],
-        ),
-      );
-    }
-    final L10n l10n = AppState.of(context).l10n;
-    final DashboardStats s = stats!;
-    return Column(
-      children: <Widget>[
-        Row(
-          children: <Widget>[
-            Expanded(
-              child: StatTile(
-                label: l10n.dashProducts,
-                value: Fmt.count(s.totalProducts),
-                accent: AppInk.products,
-                icon: Icons.inventory_2_rounded,
-                onTap: () => RootTabs.openProducts(context),
-              ),
-            ),
-            const HGap(10),
-            Expanded(
-              child: StatTile(
-                label: l10n.dashStockQty,
-                value: Fmt.count(s.totalStock),
-                accent: AppInk.inventory,
-                icon: Icons.layers_rounded,
-                footnote: '${l10n.dashStockValue} ${Fmt.money(s.totalValue, symbol: currency, compact: true)}',
-              ),
-            ),
-          ],
-        ),
-        const VGap(10),
-        Row(
-          children: <Widget>[
-            Expanded(
-              child: StatTile(
-                label: l10n.dashLowStock,
-                value: Fmt.count(s.lowStock),
-                accent: s.lowStock > 0 ? AppInk.warning : AppInk.success,
-                icon: Icons.warning_amber_rounded,
-                onTap: onLowStock,
-              ),
-            ),
-            const HGap(10),
-            Expanded(
-              child: StatTile(
-                label: l10n.dashInToday,
-                value: '${Fmt.count(s.inboundToday)} · ${Fmt.count(s.inboundQtyToday)}',
-                accent: AppInk.finance,
-                icon: Icons.swap_vert_rounded,
-                footnote: '${l10n.dashOutToday} ${Fmt.count(s.outboundToday)} · ${Fmt.count(s.outboundQtyToday)}',
-              ),
-            ),
-          ],
-        ),
       ],
     );
   }

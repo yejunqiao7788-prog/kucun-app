@@ -22,7 +22,9 @@ Future<Product?> pickProductForOrder(BuildContext context, {required bool inboun
 
 /// 开单：一屏完成「方向 / 客户 / 明细」，底部两颗键分别对应草稿与定稿。
 ///
-/// 建单永远先存成 `is_preparing: true` 的草稿 —— 服务端只有定稿才动库存，
+/// 草稿走 `is_preparing: true`，服务端跳过库存增减；定稿走 `is_preparing: false` +
+/// `status: completed`，服务端在同一个函数事务里改库存，不足即整单回滚并回四要素文案。
+/// 定稿**不能再补一枪 `/finalize`** —— 那一支见 `is_preparing` 已为 false 会判「已是正式状态」。
 /// 客户端不做任何本地库存增减；明细至少一行，服务端拒绝空单。
 class OrderCreateScreen extends StatefulWidget {
   const OrderCreateScreen({super.key, this.inbound = false});
@@ -242,12 +244,11 @@ class _OrderCreateScreenState extends State<OrderCreateScreen> {
     }
 
     setState(() => _busy = true);
-    String? orderId;
     try {
-      orderId = await app.guardWrite<String>(() => app.repos.orders.createDraft(
+      await app.guardWrite<String>(() => app.repos.orders.createDraft(
             orderData: <String, Object?>{
               'type': _inbound ? 'inbound' : 'outbound',
-              'status': 'pending',
+              'status': finalize ? 'completed' : 'pending',
               'is_preparing': !finalize,
               'order_date': Fmt.isoDate(_date),
               'notes': _notes.text.trim().isEmpty ? null : _notes.text.trim(),
@@ -259,23 +260,14 @@ class _OrderCreateScreenState extends State<OrderCreateScreen> {
                 .toList(growable: false),
             showInPickingList: _showInPicking,
           ));
-      if (finalize && orderId.isNotEmpty) {
-        await app.repos.orders.finalize(orderId);
-      }
       if (!mounted) return;
       showToast(context, finalize ? l10n.ordFinalisedOk : l10n.ordSavedDraft);
       Navigator.of(context).pop();
     } on Object catch (error) {
       if (!mounted) return;
       setState(() => _busy = false);
-      final String detail = app.describeError(error);
-      if (orderId != null && orderId.isNotEmpty) {
-        // 单已经落成草稿（定稿失败＝没动库存），此时留在本页会诱导重复建单，直接退出。
-        showToast(context, l10n.ordDeductFailed(detail), danger: true);
-        Navigator.of(context).pop();
-      } else {
-        showToast(context, detail, danger: true);
-      }
+      // 定稿单在服务端一次事务里改库存，不足即整单回滚，所以留在本页改数量重来。
+      showToast(context, app.describeError(error), danger: true);
     }
   }
 

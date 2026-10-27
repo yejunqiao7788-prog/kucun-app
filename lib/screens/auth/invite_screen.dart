@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/formatters.dart';
 import '../../core/l10n.dart';
 import '../../design/tokens.dart';
 import '../../design/widgets/controls.dart';
 import '../../design/widgets/state_views.dart';
 import '../../design/widgets/surfaces.dart';
-import '../../data/profile.dart';
+import '../../data/entities.dart';
 import '../../state/app_state.dart';
 
 /// 邀请链路两步：`/invitations/lookup` 确认码有效并显示租户名，
@@ -23,7 +24,7 @@ class _InviteScreenState extends State<InviteScreen> {
   final TextEditingController _username = TextEditingController();
   final TextEditingController _email = TextEditingController();
   final TextEditingController _password = TextEditingController();
-  UserProfile? _invitation;
+  InvitationPreview? _invitation;
   bool _busy = false;
   String? _error;
 
@@ -49,7 +50,7 @@ class _InviteScreenState extends State<InviteScreen> {
       _invitation = null;
     });
     try {
-      final UserProfile found = await app.lookupInvitation(_code.text);
+      final InvitationPreview found = await app.lookupInvitation(_code.text);
       if (mounted) setState(() => _invitation = found);
     } on Object catch (error) {
       if (mounted) {
@@ -63,8 +64,12 @@ class _InviteScreenState extends State<InviteScreen> {
   Future<void> _join() async {
     final AppState app = context.read<AppState>();
     final L10n l10n = app.l10n;
-    if (_email.text.trim().isEmpty || _password.text.length < 6) {
-      setState(() => _error = '${l10n.authEmail} · ${l10n.authPassword}');
+    if (_email.text.trim().isEmpty) {
+      setState(() => _error = l10n.authEmail);
+      return;
+    }
+    if (AppState.passwordTooWeak(_password.text)) {
+      setState(() => _error = l10n.authPasswordRule);
       return;
     }
     setState(() {
@@ -113,10 +118,26 @@ class _InviteScreenState extends State<InviteScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
-                      Text(_invitation!.tenantName,
-                          style: Theme.of(context).textTheme.titleLarge),
-                      const VGap(4),
-                      Text(l10n.authJoin, style: Theme.of(context).textTheme.bodyMedium),
+                      Text(
+                        _invitation!.tenantName.isEmpty
+                            ? l10n.commonUnnamed
+                            : _invitation!.tenantName,
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                      const VGap(10),
+                      KeyValueRow(
+                        label: l10n.setRole,
+                        value: l10n.roleLabel(_invitation!.role),
+                        accent: AppInk.info,
+                      ),
+                      if (_invitation!.expiresAt != null) ...<Widget>[
+                        const VGap(10),
+                        KeyValueRow(
+                          label: l10n.shrExpires,
+                          value: Fmt.date(_invitation!.expiresAt),
+                          accent: AppInk.warning,
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -129,7 +150,12 @@ class _InviteScreenState extends State<InviteScreen> {
                   keyboardType: TextInputType.emailAddress,
                 ),
                 const VGap(14),
-                AppTextField(label: l10n.authPassword, controller: _password, obscure: true),
+                AppTextField(
+                  label: l10n.authPassword,
+                  controller: _password,
+                  obscure: true,
+                  hint: l10n.authPasswordRule,
+                ),
                 const VGap(22),
                 PrimaryButton(label: l10n.authJoin, loading: _busy, onPressed: _join),
               ],

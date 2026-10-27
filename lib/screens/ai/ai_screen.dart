@@ -54,14 +54,22 @@ class _AiScreenState extends State<AiScreen> {
 
   int _tab = 0;
 
+  /// build 直接读 `_config.value/errorText`，没有 AnimatedBuilder 接手，得自己挂监听，
+  /// 否则配置回来后页面停在骨架屏。
+  void _repaint() {
+    if (mounted) setState(() {});
+  }
+
   @override
   void initState() {
     super.initState();
+    _config.addListener(_repaint);
     _config.load();
   }
 
   @override
   void dispose() {
+    _config.removeListener(_repaint);
     _config.dispose();
     _scroll.dispose();
     _input.dispose();

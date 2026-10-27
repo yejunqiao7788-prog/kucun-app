@@ -315,7 +315,8 @@ class OrderRepo {
   }
 
   /// 建单必须一次带上 `order_data` + 非空 `items_data`，服务端没有「空草稿」接口。
-  /// `is_preparing: true` 让 RPC 跳过扣库存，等同草稿；定稿才动库存。
+  /// `is_preparing: true` 让 RPC 跳过扣库存（草稿）；`false` 则服务端当场改库存并把
+  /// `status` 落成 `completed`，此时**不要**再调 [finalize]，那支只给备货单转正式用。
   Future<String> createDraft({
     required Map<String, Object?> orderData,
     required List<Map<String, Object?>> items,
@@ -329,8 +330,12 @@ class OrderRepo {
     final String id = JsonMap.from(data).asStringOr('order_id', '');
     if (id.isEmpty) return id;
     if (showInPickingList) {
-      // RPC 不落这个开关，成功后单独补写一次；失败不影响已建成的草稿。
-      await setPickingList(id, true);
+      // RPC 不落这个开关，成功后单独补写一次；失败不影响已建成的单。
+      try {
+        await setPickingList(id, true);
+      } on Object {
+        // 单已经落成，开关没写上不能反过来报建单失败（否则用户会重复建单）。
+      }
     }
     return id;
   }
@@ -440,9 +445,16 @@ class ShowroomRepo {
   final ApiClient api;
   final TenantProvider tenant;
 
-  Future<List<Showroom>> list() async {
-    final Object? data = await _get(api, '/showrooms', tenant: tenant, cache: true);
-    return JsonMap.rawListOf(data, <String>['showrooms', 'data']).map(Showroom.new).toList();
+  Future<ApiResponse<List<Showroom>>> list() async {
+    final ApiResponse<Object?> res =
+        await api.get('/showrooms', tenantId: tenant(), cache: true);
+    return ApiResponse<List<Showroom>>(
+      data: JsonMap.rawListOf(res.data, const <String>['showrooms', 'data'])
+          .map(Showroom.new)
+          .toList(),
+      stale: res.stale,
+      cachedAt: res.cachedAt,
+    );
   }
 
   Future<Showroom> detail(String id) async {
@@ -784,14 +796,23 @@ class FinanceRepo {
   final ApiClient api;
   final TenantProvider tenant;
 
-  Future<FinanceSummary> stats({String? dateFrom, String? dateTo}) async => FinanceSummary(
-      JsonMap.from(await _get(
-        api,
-        '/finance/stats',
-        query: <String, Object?>{'dateFrom': dateFrom, 'dateTo': dateTo},
-        tenant: tenant,
-        cache: true,
-      )).json);
+  Future<ApiResponse<FinanceSummary>> stats({
+    String? dateFrom,
+    String? dateTo,
+  }) async {
+    final ApiResponse<Object?> res = await api.get(
+      '/finance/stats',
+      query: <String, Object?>{'dateFrom': dateFrom, 'dateTo': dateTo},
+      tenantId: tenant(),
+      cache: true,
+    );
+    // stale 必须跟着数据一起出去：离线兜底读到的是缓存，界面得知道这串数字可能不是最新。
+    return ApiResponse<FinanceSummary>(
+      data: FinanceSummary(JsonMap.from(res.data).json),
+      stale: res.stale,
+      cachedAt: res.cachedAt,
+    );
+  }
 
   Future<Paged<PaymentRecord>> records({
     String? dateFrom,

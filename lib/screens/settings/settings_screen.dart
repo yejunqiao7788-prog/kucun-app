@@ -22,14 +22,27 @@ import '../../design/widgets/surfaces.dart';
 import '../../shell/module_registry.dart';
 import '../../state/app_state.dart';
 import '../../state/value_loader.dart';
+import '../me/business_numbers_card.dart';
 import 'settings_lists.dart';
 
-/// 「我的」：账号 + 偏好 + 模块入口 + 租户管理。
+/// 「我的」：账号 + 经营数字 + 偏好 + 模块入口 + 租户管理。
 ///
 /// 到期租户只能停在这一页：经营模块全部锁死，续费、反馈与导出留在这里，
 /// 所以续费卡片必须在设置页内完成，不能跳到财务模块去。
-class SettingsScreen extends StatelessWidget {
+class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
+
+  @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<SettingsScreen> {
+  final GlobalKey<BusinessNumbersCardState> _numbers = GlobalKey<BusinessNumbersCardState>();
+
+  Future<void> _refreshAll(AppState app) async {
+    await app.refreshProfileQuietly();
+    await _numbers.currentState?.reload();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -39,7 +52,7 @@ class SettingsScreen extends StatelessWidget {
 
     return SafeArea(
       child: RefreshIndicator(
-        onRefresh: app.refreshProfileQuietly,
+        onRefresh: () => _refreshAll(app),
         child: ListView(
           padding: const EdgeInsets.fromLTRB(Space.gutter, 8, Space.gutter, 130),
           children: <Widget>[
@@ -61,6 +74,10 @@ class SettingsScreen extends StatelessWidget {
               const _RenewalCard(),
             ],
             _AccountCard(profile: profile),
+            if (app.canOpenModule(ModuleKey.dashboard)) ...<Widget>[
+              const VGap(14),
+              BusinessNumbersCard(key: _numbers),
+            ],
             const VGap(14),
             const _ModuleShortcuts(),
             const VGap(14),
@@ -626,7 +643,6 @@ class _DataCard extends StatelessWidget {
     try {
       final JsonMap data = await app.repos.settings.fullExport();
       if (!context.mounted) return;
-      final JsonMap counts = data.asMap('counts');
       await showDrawer<void>(
         context,
         title: l10n.setExport,
@@ -636,12 +652,13 @@ class _DataCard extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            for (final String key in <String>['products', 'orders', 'customers', 'showrooms', 'categories'])
+            for (final String key in _exportKeys)
               Padding(
                 padding: const EdgeInsets.only(bottom: 10),
                 child: KeyValueRow(
                   label: _exportLabel(key, l10n),
-                  value: Fmt.count(counts.asIntOr(key, 0)),
+                  // 这个接口只回五张裸数组，没有 counts 字段，计数只能自己取数组长度。
+                  value: Fmt.count(data.asList(key).length),
                   accent: AppInk.finance,
                 ),
               ),
@@ -666,12 +683,20 @@ class _DataCard extends StatelessWidget {
     }
   }
 
+  static const List<String> _exportKeys = <String>[
+    'products',
+    'orders',
+    'order_items',
+    'customers',
+    'payment_records',
+  ];
+
   static String _exportLabel(String key, L10n l10n) => switch (key) {
         'products' => l10n.navProducts,
         'orders' => l10n.navOrders,
+        'order_items' => l10n.ordItems,
         'customers' => l10n.setCustomers,
-        'showrooms' => l10n.moduleShowroom,
-        _ => l10n.setCategories,
+        _ => l10n.finRecords,
       };
 
   Future<void> _resetData(BuildContext context, AppState app) async {

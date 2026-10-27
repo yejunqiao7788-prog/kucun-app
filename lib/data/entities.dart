@@ -210,6 +210,20 @@ class OrderItem extends JsonMap {
       };
 }
 
+/// `POST /invitations/lookup` → `data.invitation`。
+///
+/// 注册前预览：服务端只给团队名、入职角色与有效期，不给成员名单。
+class InvitationPreview extends JsonMap {
+  const InvitationPreview(super.json);
+
+  factory InvitationPreview.fromData(Object? envelopeData) =>
+      InvitationPreview(JsonMap.from(envelopeData).asMap('invitation').json);
+
+  String get tenantName => asStringOr('tenant_name', '');
+  String get role => asStringOr('role', 'tenant_user');
+  DateTime? get expiresAt => asDate('expires_at');
+}
+
 /// 工作台八个指标：单个 RPC 出数，客户端不得二次汇总。
 class DashboardStats extends JsonMap {
   const DashboardStats(super.json);
@@ -833,6 +847,23 @@ enum ListingStatus {
         ListingStatus.approved,
         ListingStatus.published,
         ListingStatus.delisted,
+      }.contains(this);
+
+  /// 服务端 STATE_ACTIONS 只认这几组转移，按钮必须严格按它来，
+  /// 否则点了就是 409 —— 界面给出一个必然失败的按钮比少给一个按钮更糟。
+  bool get canPause =>
+      this == ListingStatus.published || this == ListingStatus.approved;
+
+  /// resume 只从 paused 回到 pending_review（重新排队审核），delisted 不在其列。
+  bool get canResume => this == ListingStatus.paused;
+
+  bool get canWithdraw => const <ListingStatus>{
+        ListingStatus.draft,
+        ListingStatus.pendingReview,
+        ListingStatus.inReview,
+        ListingStatus.rejected,
+        ListingStatus.approved,
+        ListingStatus.paused,
       }.contains(this);
 }
 

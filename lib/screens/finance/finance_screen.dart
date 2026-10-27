@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/api_client.dart';
 import '../../core/formatters.dart';
 import '../../core/l10n.dart';
 import '../../data/entities.dart';
@@ -37,9 +38,16 @@ class _FinanceScreenState extends State<FinanceScreen> {
   late final AppState _app = context.read<AppState>();
   int _tab = 0;
 
-  late final ValueLoader<FinanceSummary> _stats = ValueLoader<FinanceSummary>(
-    () => _app.repos.finance.stats(dateFrom: _from, dateTo: _to),
-  );
+  /// 离线兜底信号只能在这里捞：ValueLoader 只存 T，带不出 ApiResponse 上的 stale。
+  bool _statsStale = false;
+
+  late final ValueLoader<FinanceSummary> _stats =
+      ValueLoader<FinanceSummary>(() async {
+        final ApiResponse<FinanceSummary> res =
+            await _app.repos.finance.stats(dateFrom: _from, dateTo: _to);
+        _statsStale = res.stale;
+        return res.data;
+      });
   late final ValueLoader<JsonMap> _debts =
       ValueLoader<JsonMap>(() => _app.repos.finance.debts());
   late final ListController<PaymentRecord> _records = ListController<PaymentRecord>(
@@ -59,9 +67,17 @@ class _FinanceScreenState extends State<FinanceScreen> {
   String? _from;
   String? _to;
 
+  /// build 直接读 `_stats`/`_debts` 的字段（概览和欠款面都没有 AnimatedBuilder 接手），
+  /// 不挂监听的话数据回来后没人重绘，页面会停在骨架屏。
+  void _repaint() {
+    if (mounted) setState(() {});
+  }
+
   @override
   void initState() {
     super.initState();
+    _stats.addListener(_repaint);
+    _debts.addListener(_repaint);
     unawaited(_stats.load());
     unawaited(_debts.load());
     unawaited(_records.load());
@@ -69,6 +85,8 @@ class _FinanceScreenState extends State<FinanceScreen> {
 
   @override
   void dispose() {
+    _stats.removeListener(_repaint);
+    _debts.removeListener(_repaint);
     _stats.dispose();
     _debts.dispose();
     _records.dispose();
@@ -209,6 +227,7 @@ class _FinanceScreenState extends State<FinanceScreen> {
                 children: <Widget>[
                   _OverviewTab(
                     stats: _stats,
+                    stale: _statsStale,
                     currency: app.profile.currencySymbol,
                     hasRange: _from != null,
                     onPickRange: _pickRange,
@@ -246,6 +265,7 @@ class _FinanceScreenState extends State<FinanceScreen> {
 class _OverviewTab extends StatelessWidget {
   const _OverviewTab({
     required this.stats,
+    required this.stale,
     required this.currency,
     required this.hasRange,
     required this.onPickRange,
@@ -254,6 +274,7 @@ class _OverviewTab extends StatelessWidget {
   });
 
   final ValueLoader<FinanceSummary> stats;
+  final bool stale;
   final String currency;
   final bool hasRange;
   final VoidCallback onPickRange;
@@ -280,7 +301,7 @@ class _OverviewTab extends StatelessWidget {
     }
 
     final List<Widget> banners = <Widget>[
-      if (stats.stale)
+      if (stale)
         NoticeBanner(
           text: l10n.commonStaleBanner,
           color: AppInk.info,

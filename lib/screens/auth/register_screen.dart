@@ -36,10 +36,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
   Future<void> _submit() async {
     final AppState app = context.read<AppState>();
     final L10n l10n = app.l10n;
-    if (_tenant.text.trim().isEmpty ||
-        _email.text.trim().isEmpty ||
-        _password.text.length < 6) {
-      setState(() => _error = '${l10n.authTenantName} · ${l10n.authEmail} · ${l10n.authPassword}');
+    if (_tenant.text.trim().isEmpty || _email.text.trim().isEmpty) {
+      setState(() => _error = '${l10n.authTenantName} · ${l10n.authEmail}');
+      return;
+    }
+    if (AppState.passwordTooWeak(_password.text)) {
+      setState(() => _error = l10n.authPasswordRule);
       return;
     }
     setState(() {
@@ -89,7 +91,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 label: l10n.authPassword,
                 controller: _password,
                 obscure: true,
-                hint: '≥ 6',
+                hint: l10n.authPasswordRule,
               ),
               if (_error != null) ...<Widget>[
                 const VGap(16),

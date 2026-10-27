@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/api_client.dart';
 import '../../core/env.dart';
 import '../../core/formatters.dart';
 import '../../core/l10n.dart';
@@ -33,17 +34,32 @@ class ShowroomScreen extends StatefulWidget {
 
 class _ShowroomScreenState extends State<ShowroomScreen> {
   late final AppState _app = context.read<AppState>();
+
+  /// 离线兜底信号只能在这里捞：ValueLoader 只存 T，带不出 ApiResponse 上的 stale。
+  bool _rowsStale = false;
+
   late final ValueLoader<List<Showroom>> _rows =
-      ValueLoader<List<Showroom>>(() => _app.repos.showrooms.list());
+      ValueLoader<List<Showroom>>(() async {
+    final ApiResponse<List<Showroom>> res = await _app.repos.showrooms.list();
+    _rowsStale = res.stale;
+    return res.data;
+  });
+
+  /// build 直接读 `_rows` 的字段，没有 AnimatedBuilder 接手，得自己挂监听。
+  void _repaint() {
+    if (mounted) setState(() {});
+  }
 
   @override
   void initState() {
     super.initState();
+    _rows.addListener(_repaint);
     unawaited(_rows.load());
   }
 
   @override
   void dispose() {
+    _rows.removeListener(_repaint);
     _rows.dispose();
     super.dispose();
   }
@@ -83,11 +99,11 @@ class _ShowroomScreenState extends State<ShowroomScreen> {
         ),
       ],
       children: <Widget>[
-        if (_rows.stale || app.renewalPending)
+        if (_rowsStale || app.renewalPending)
           NoticeBanner(
-            text: _rows.stale ? l10n.commonStaleBanner : l10n.commonExpiredBanner,
-            color: _rows.stale ? AppInk.info : AppInk.danger,
-            icon: _rows.stale ? Icons.history_rounded : Icons.lock_outline_rounded,
+            text: _rowsStale ? l10n.commonStaleBanner : l10n.commonExpiredBanner,
+            color: _rowsStale ? AppInk.info : AppInk.danger,
+            icon: _rowsStale ? Icons.history_rounded : Icons.lock_outline_rounded,
           ),
         if (_rows.loading && rows.isEmpty)
           const SkeletonList(count: 3, itemHeight: 132)
