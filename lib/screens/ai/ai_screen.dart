@@ -211,7 +211,7 @@ class _AiScreenState extends State<AiScreen> {
   /// 列表里就一颗按钮都没有。快捷发送因此改挂在输入框上方，本地兜底一组按钮。
   /// 只在当前签真能用时才出现 —— 给一排点不动的按钮比不给更糟。
   Widget? _stripIfUsable(AiConfig? config) {
-    if (config == null || _config.loading || !config.enabled) return null;
+    if (config == null || !config.enabled) return null;
     if (_tab == 0 && !config.usable) return null;
     return _shortcutStrip();
   }
