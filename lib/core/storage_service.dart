@@ -46,7 +46,7 @@ class StorageService {
     }
     final String path = buildImagePath(tenantId: tenantId, fileName: fileName, sequence: sequence);
     final StorageFileApi bucket = _storage.from(Env.publicImagesBucket);
-    await bucket.upload(
+    await bucket.uploadBinary(
       path,
       bytes,
       fileOptions: FileOptions(contentType: contentType, upsert: false),
@@ -66,7 +66,7 @@ class StorageService {
     final String path =
         '$tenantId/${DateTime.now().millisecondsSinceEpoch}.$ext';
     final StorageFileApi bucket = _storage.from(Env.privateAssetsBucket);
-    await bucket.upload(
+    await bucket.uploadBinary(
       path,
       bytes,
       fileOptions: FileOptions(contentType: contentType, upsert: false),
