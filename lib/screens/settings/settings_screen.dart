@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/access.dart';
+import '../../core/api_client.dart';
 import '../../core/env.dart';
 import '../../core/formatters.dart';
 import '../../core/l10n.dart';
@@ -37,11 +38,31 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  final GlobalKey<BusinessNumbersCardState> _numbers = GlobalKey<BusinessNumbersCardState>();
+  late final AppState _app = context.read<AppState>();
 
-  Future<void> _refreshAll(AppState app) async {
-    await app.refreshProfileQuietly();
-    await _numbers.currentState?.reload();
+  /// 经营数字由这一页持有，不是卡片自己持有：标签页随 IndexedStack 常驻，
+  /// 卡片却会随滚动销毁重建，取数放在卡片里就等于每滑回来一次就重发一次请求。
+  late final ValueLoader<BusinessNumbers> _numbers =
+      ValueLoader<BusinessNumbers>(() async {
+    final ApiResponse<DashboardStats> res = await _app.repos.dashboard.stats();
+    return BusinessNumbers(res.data, res.stale);
+  });
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_numbers.load());
+  }
+
+  @override
+  void dispose() {
+    _numbers.dispose();
+    super.dispose();
+  }
+
+  Future<void> _refreshAll() async {
+    await _app.refreshProfileQuietly();
+    await _numbers.refresh();
   }
 
   @override
@@ -52,7 +73,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     return SafeArea(
       child: RefreshIndicator(
-        onRefresh: () => _refreshAll(app),
+        onRefresh: _refreshAll,
         child: ListView(
           padding: const EdgeInsets.fromLTRB(Space.gutter, 8, Space.gutter, 130),
           children: <Widget>[
@@ -76,7 +97,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             _AccountCard(profile: profile),
             if (app.canOpenModule(ModuleKey.dashboard)) ...<Widget>[
               const VGap(14),
-              BusinessNumbersCard(key: _numbers),
+              BusinessNumbersCard(numbers: _numbers),
             ],
             const VGap(14),
             const _ModuleShortcuts(),

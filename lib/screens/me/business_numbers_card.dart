@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../core/api_client.dart';
 import '../../core/formatters.dart';
 import '../../core/l10n.dart';
 import '../../data/entities.dart';
@@ -13,90 +12,88 @@ import '../../shell/module_registry.dart';
 import '../../state/app_state.dart';
 import '../../state/value_loader.dart';
 
+/// 取数快照：`ValueLoader` 只存 `T`，离线兜底信号得跟数据一起带进来。
+class BusinessNumbers {
+  const BusinessNumbers(this.stats, this.stale);
+
+  final DashboardStats stats;
+  final bool stale;
+}
+
 /// 经营数字：库存总量与货值、低库存预警、今日出入库。
 ///
 /// 从工作台搬进「我的」，是因为主屏会被人从背后瞥一眼，家底不该露在那儿。
 /// 数字默认打码，眼睛键只在这页有效 —— 取数依旧走服务端，权限位不在就整块不渲染。
+///
+/// loader 由「我的」页的 State 持有：这张卡在 `ListView` 里，滚出可视区就会被销毁，
+/// 自己取数的话每次滑回来都要重发请求、重铺骨架屏，看上去就是一块空白。
 class BusinessNumbersCard extends StatefulWidget {
-  const BusinessNumbersCard({super.key});
+  const BusinessNumbersCard({super.key, required this.numbers});
+
+  final ValueLoader<BusinessNumbers> numbers;
 
   @override
-  State<BusinessNumbersCard> createState() => BusinessNumbersCardState();
+  State<BusinessNumbersCard> createState() => _BusinessNumbersCardState();
 }
 
-class BusinessNumbersCardState extends State<BusinessNumbersCard> {
-  late final AppState _app = context.read<AppState>();
-  bool _stale = false;
-  late final ValueLoader<DashboardStats> _stats = ValueLoader<DashboardStats>(
-    () async {
-      // stale 只能在这里取：ValueLoader 自己不带这个信号。
-      final ApiResponse<DashboardStats> res = await _app.repos.dashboard.stats();
-      _stale = res.stale;
-      return res.data;
-    },
-  );
+class _BusinessNumbersCardState extends State<BusinessNumbersCard> {
   bool _revealed = false;
 
   @override
-  void initState() {
-    super.initState();
-    _stats.load();
-  }
-
-  @override
-  void dispose() {
-    _stats.dispose();
-    super.dispose();
-  }
-
-  /// 供「我的」页下拉刷新调用：数字要跟着开单、入库一起动。
-  Future<void> reload() => _stats.refresh();
-
-  void _toggle() => setState(() => _revealed = !_revealed);
-
-  @override
   Widget build(BuildContext context) {
-    final L10n l10n = _app.l10n;
+    final AppState app = context.watch<AppState>();
+    final L10n l10n = app.l10n;
     return AnimatedBuilder(
-      animation: _stats,
-      builder: (BuildContext context, Widget? _) => AppCard(
-        accent: AppInk.inventory,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            SectionHeader(
-              title: l10n.meBizTitle,
-              subtitle: l10n.meBizHint,
-              accent: AppInk.inventory,
-              trailing: _RevealButton(
-                revealed: _revealed,
-                showLabel: l10n.meBizShow,
-                hideLabel: l10n.meBizHide,
-                onPressed: _toggle,
+      animation: widget.numbers,
+      builder: (BuildContext context, Widget? _) {
+        final BusinessNumbers? snapshot = widget.numbers.value;
+        return AppCard(
+          accent: AppInk.inventory,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              SectionHeader(
+                title: l10n.meBizTitle,
+                subtitle: l10n.meBizHint,
+                accent: AppInk.inventory,
+                trailing: _RevealButton(
+                  revealed: _revealed,
+                  showLabel: l10n.meBizShow,
+                  hideLabel: l10n.meBizHide,
+                  onPressed: () => setState(() => _revealed = !_revealed),
+                ),
               ),
-            ),
-            if (_stats.loading && _stats.value == null)
-              const SkeletonList(count: 2, itemHeight: 84)
-            else if (_stats.value == null)
-              AppErrorView(
-                message: _stats.errorText ?? l10n.commonErrorTitle,
-                onRetry: _stats.load,
-              )
-            else ...<Widget>[
-              _Numbers(stats: _stats.value!, revealed: _revealed, currency: _app.profile.currencySymbol),
-              const VGap(12),
-              _Footnote(stats: _stats.value!, revealed: _revealed, currency: _app.profile.currencySymbol),
+              if (widget.numbers.loading && snapshot == null)
+                const SkeletonList(count: 2, itemHeight: 84)
+              else if (snapshot == null)
+                AppErrorView(
+                  message: widget.numbers.errorText ?? l10n.commonErrorTitle,
+                  onRetry: widget.numbers.load,
+                )
+              else ...<Widget>[
+                _Numbers(
+                  stats: snapshot.stats,
+                  revealed: _revealed,
+                  currency: app.profile.currencySymbol,
+                ),
+                const VGap(12),
+                _Footnote(
+                  stats: snapshot.stats,
+                  revealed: _revealed,
+                  currency: app.profile.currencySymbol,
+                ),
+              ],
+              if (snapshot != null && snapshot.stale && app.online) ...<Widget>[
+                const VGap(10),
+                Text(
+                  l10n.commonStaleBanner,
+                  style: const TextStyle(fontSize: AppType.micro, color: AppInk.textTertiary),
+                ),
+              ],
             ],
-            if (_stale && _app.online && _stats.value != null) ...<Widget>[
-              const VGap(10),
-              Text(
-                l10n.commonStaleBanner,
-                style: const TextStyle(fontSize: AppType.micro, color: AppInk.textTertiary),
-              ),
-            ],
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 }
