@@ -8,6 +8,7 @@ import '../models/user_profile.dart';
 class AuthService extends ChangeNotifier {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final GoogleSignIn _googleSignIn = GoogleSignIn();
 
   User? _currentUser;
   UserProfile? _currentProfile;
@@ -21,14 +22,6 @@ class AuthService extends ChangeNotifier {
   bool get isAuthenticated => _currentUser != null;
 
   AuthService() {
-    if (!kIsWeb) {
-      try {
-        GoogleSignIn.instance.initialize();
-      } catch (e) {
-        debugPrint("GoogleSignIn initialize skipped: $e");
-      }
-    }
-
     _auth.authStateChanges().listen(_onAuthStateChanged);
   }
 
@@ -158,9 +151,14 @@ class AuthService extends ChangeNotifier {
         final GoogleAuthProvider authProvider = GoogleAuthProvider();
         credential = await _auth.signInWithPopup(authProvider);
       } else {
-        final GoogleSignInAccount googleUser = await GoogleSignIn.instance.authenticate();
-        final GoogleSignInAuthentication googleAuth = googleUser.authentication;
+        final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
+        if (googleUser == null) {
+          _setLoading(false);
+          return false;
+        }
+        final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
         final AuthCredential cred = GoogleAuthProvider.credential(
+          accessToken: googleAuth.accessToken,
           idToken: googleAuth.idToken,
         );
         credential = await _auth.signInWithCredential(cred);
@@ -246,7 +244,7 @@ class AuthService extends ChangeNotifier {
     try {
       if (!kIsWeb) {
         try {
-          await GoogleSignIn.instance.signOut();
+          await _googleSignIn.signOut();
         } catch (_) {}
       }
       await _auth.signOut();
