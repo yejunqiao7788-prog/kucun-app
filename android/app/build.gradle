@@ -25,8 +25,8 @@ if (flutterVersionName == null) {
 
 android {
     namespace "com.torgseek.kucun"
-    compileSdk 34
-    ndkVersion flutter.ndkVersion
+    compileSdk = 35
+    ndkVersion = flutter.ndkVersion
 
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
@@ -39,10 +39,10 @@ android {
 
     defaultConfig {
         applicationId "com.torgseek.kucun"
-        minSdk 21
-        targetSdk 34
-        versionCode flutterVersionCode.toInteger()
-        versionName flutterVersionName
+        minSdk = 21
+        targetSdk = 35
+        versionCode = flutterVersionCode.toInteger()
+        versionName = flutterVersionName
         multiDexEnabled true
     }
 
