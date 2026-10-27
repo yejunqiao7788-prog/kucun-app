@@ -1,0 +1,35 @@
+{
+    "name": "torgseek 库存",
+    "short_name": "torgseek",
+    "start_url": ".",
+    "display": "standalone",
+    "background_color": "#151B2E",
+    "theme_color": "#4C6FFF",
+    "description": "torgseek 库存端：商品、库存、订单、展厅与集市一个 App 管完。",
+    "orientation": "portrait-primary",
+    "prefer_related_applications": false,
+    "icons": [
+        {
+            "src": "icons/Icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png"
+        },
+        {
+            "src": "icons/Icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png"
+        },
+        {
+            "src": "icons/Icon-maskable-192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "maskable"
+        },
+        {
+            "src": "icons/Icon-maskable-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "maskable"
+        }
+    ]
+}
