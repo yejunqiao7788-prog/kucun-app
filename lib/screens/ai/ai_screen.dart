@@ -25,6 +25,10 @@ import '../orders/order_detail_screen.dart';
 /// App 没有任何输入密钥的入口，配置读不到就只解释原因、不给输入框。
 /// 「速查」走 `/assist/query`，返回的是系统里的真实订单/商品/日志行，不是模型写的字，
 /// 所以它和问答分开两个签，避免把「AI 说」当成「系统有」。
+///
+/// 输入框上方常驻一排快捷发送：问答那边是服务端 `quick_prompts`（没配就用本地兜底的用法
+/// 问题，绝不放需要家底数据的问题，模型手里没有），速查这边是今日出库/今日入库/昨天的订单，
+/// 发出去的都是正则兜底认得的中文原文。
 class AiScreen extends StatefulWidget {
   const AiScreen({super.key});
 
@@ -47,6 +51,10 @@ class _AiScreenState extends State<AiScreen> {
   JsonMap? _lookup;
   bool _looking = false;
   String? _lookupError;
+
+  /// 服务端按日期返回全部单据，不替用户区分出入库；这一位记住「这次问的是哪一类」，
+  /// 行数据和条数都按它来筛，界面上就不会把入库算进出库。
+  OrderType? _typeFilter;
 
   final SpeechToText _stt = SpeechToText();
   bool _sttInitialised = false;
@@ -125,13 +133,14 @@ class _AiScreenState extends State<AiScreen> {
     _scrollToEnd();
   }
 
-  Future<void> _lookupNow(String utterance) async {
+  Future<void> _lookupNow(String utterance, {OrderType? only}) async {
     final String text = utterance.trim();
     if (text.isEmpty || _looking) return;
     _input.clear();
     setState(() {
       _looking = true;
       _lookupError = null;
+      _typeFilter = only ?? _typeIn(text);
     });
     String? failure;
     JsonMap? result;
@@ -147,6 +156,83 @@ class _AiScreenState extends State<AiScreen> {
       _lookupError = failure;
       _looking = false;
     });
+  }
+
+  /// 意图解析的正则兜底只认中文，所以快捷发送发的是写死的中文原文，界面只展示本地化标签。
+  /// 问答那边交给模型的是用法问题，不是家底问题 —— `/ai/chat` 手里没有租户数据。
+  List<_Shortcut> _shortcuts(L10n l10n) {
+    if (_tab == 0) {
+      final List<String> server = _config.value?.quickPrompts ?? const <String>[];
+      if (server.isNotEmpty) {
+        return server.map((String prompt) => _Shortcut(prompt, prompt)).toList(growable: false);
+      }
+      return <_Shortcut>[
+        _Shortcut(l10n.aiQCanDo, l10n.aiQCanDo),
+        _Shortcut(l10n.aiQOrderStates, l10n.aiQOrderStates),
+        _Shortcut(l10n.aiQHowExport, l10n.aiQHowExport),
+      ];
+    }
+    return <_Shortcut>[
+      _Shortcut(l10n.dashOutToday, '今日出库', only: OrderType.outbound),
+      _Shortcut(l10n.dashInToday, '今日入库', only: OrderType.inbound),
+      _Shortcut(l10n.aiQYesterday, '昨天的订单'),
+    ];
+  }
+
+  void _applyShortcut(_Shortcut shortcut) {
+    if (_tab == 0) {
+      _ask(shortcut.text);
+    } else {
+      _lookupNow(shortcut.text, only: shortcut.only);
+    }
+  }
+
+  /// 手打和语音没有按钮那份现成的意图，只能从原文认关键词。
+  OrderType? _typeIn(String text) {
+    if (text.contains('出库') || text.contains('出货') || text.contains('发货') || text.contains('outbound')) {
+      return OrderType.outbound;
+    }
+    if (text.contains('入库') || text.contains('到货') || text.contains('inbound')) {
+      return OrderType.inbound;
+    }
+    return null;
+  }
+
+  List<JsonMap> _keepType(List<JsonMap> rows) {
+    final OrderType? want = _typeFilter;
+    if (want == null) return rows;
+    return rows.where((JsonMap row) => Order(row.json).type == want).toList(growable: false);
+  }
+
+  String _countNote(L10n l10n, JsonMap result, List<JsonMap> rows) =>
+      l10n.aiCountOrders(_typeFilter == null ? result.asIntOr('count', 0) : rows.length);
+
+  /// 底部那条空白原本是「快捷问句只来自服务端」留下的：超管没配 quick_prompts，
+  /// 列表里就一颗按钮都没有。快捷发送因此改挂在输入框上方，本地兜底一组按钮。
+  /// 只在当前签真能用时才出现 —— 给一排点不动的按钮比不给更糟。
+  Widget? _stripIfUsable(AiConfig? config) {
+    if (config == null || _config.loading || !config.enabled) return null;
+    if (_tab == 0 && !config.usable) return null;
+    return _shortcutStrip();
+  }
+
+  Widget _shortcutStrip() {
+    final L10n l10n = AppState.of(context).l10n;
+    final List<_Shortcut> items = _shortcuts(l10n);
+    final bool busy = _tab == 0 ? _sending : _looking;
+    return SizedBox(
+      height: 38,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: EdgeInsets.zero,
+        itemCount: items.length,
+        separatorBuilder: (BuildContext context, int index) => const HGap(8),
+        itemBuilder: (BuildContext context, int index) => _PromptChip(
+          label: items[index].label,
+          onTap: busy ? null : () => _applyShortcut(items[index]),
+        ),
+      ),
+    );
   }
 
   Future<void> _toggleMic() async {
@@ -251,8 +337,19 @@ class _AiScreenState extends State<AiScreen> {
             const Expanded(child: SkeletonList(count: 3, itemHeight: 70))
           else if (_config.errorText != null && config == null)
             Expanded(child: AppErrorView(message: _config.errorText!, onRetry: _config.load))
-          else if (config != null && !config.usable)
+          else if (config != null && !config.enabled)
             Expanded(child: _NotConfigured(config: config, l10n: l10n))
+          else if (config != null && !config.usable && _tab == 0)
+            // 缺的是模型密钥，不是速查：问答锁掉，速查照常走真实记录。
+            Expanded(
+              child: _NotConfigured(
+                config: config,
+                l10n: l10n,
+                onLookup: () => setState(() => _tab = 1),
+              ),
+            )
+          else if (config == null)
+            const Expanded(child: SkeletonList(count: 3, itemHeight: 70))
           else
             Expanded(child: _tab == 0 ? _buildChat(l10n) : _buildLookup(l10n)),
           _Composer(
@@ -264,6 +361,7 @@ class _AiScreenState extends State<AiScreen> {
             listeningHint: l10n.aiListening,
             sendLabel: l10n.aiSend,
             voiceTooltip: l10n.aiVoice,
+            shortcuts: _stripIfUsable(config),
             onSend: () => _tab == 0 ? _ask(_input.text) : _lookupNow(_input.text),
             onMic: _toggleMic,
           ),
@@ -273,8 +371,6 @@ class _AiScreenState extends State<AiScreen> {
   }
 
   Widget _buildChat(L10n l10n) {
-    final List<String> prompts = _config.value?.quickPrompts ?? const <String>[];
-    final List<String> chips = _turns.isEmpty ? prompts : prompts.take(3).toList();
     return ListView(
       controller: _scroll,
       padding: const EdgeInsets.fromLTRB(Space.gutter, 4, Space.gutter, 16),
@@ -288,16 +384,6 @@ class _AiScreenState extends State<AiScreen> {
           ),
         for (final _Turn turn in _turns) _Bubble(turn: turn),
         if (_sending) const _ThinkingRow(),
-        if (chips.isNotEmpty) ...<Widget>[
-          const VGap(12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: chips
-                .map((String prompt) => _PromptChip(label: prompt, onTap: _sending ? null : () => _ask(prompt)))
-                .toList(growable: false),
-          ),
-        ],
         const VGap(14),
         Text(
           l10n.aiDisclaimer,
@@ -335,11 +421,13 @@ class _AiScreenState extends State<AiScreen> {
   List<Widget> _renderLookup(JsonMap result, L10n l10n) {
     switch (result.asStringOr('intent', '')) {
       case 'date_orders':
+        final List<JsonMap> rows =
+            _keepType(JsonMap.listOf(result.raw('orders'), const <String>[]));
         return _orderRows(
           l10n,
           title: '${result.asStringOr('dateFrom', '—')} → ${result.asStringOr('dateTo', '—')}',
-          note: l10n.aiCountOrders(result.asIntOr('count', 0)),
-          orders: JsonMap.listOf(result.raw('orders'), const <String>[]),
+          note: _countNote(l10n, result, rows),
+          orders: rows,
         );
       case 'customer_orders':
         final List<JsonMap> orders = JsonMap.listOf(result.raw('orders'), const <String>[]);
@@ -352,18 +440,21 @@ class _AiScreenState extends State<AiScreen> {
           if (products.isEmpty) return <Widget>[_notFound(l10n, who)];
           return _productRows(l10n, note: who, products: products);
         }
+        final List<JsonMap> rows = _keepType(orders);
         return _orderRows(
           l10n,
           title: who,
-          note: l10n.aiCountOrders(result.asIntOr('count', 0)),
-          orders: orders,
+          note: _countNote(l10n, result, rows),
+          orders: rows,
         );
       case 'notes_search':
+        final List<JsonMap> rows =
+            _keepType(JsonMap.listOf(result.raw('orders'), const <String>[]));
         return _orderRows(
           l10n,
           title: result.asStringOr('keyword', ''),
-          note: l10n.aiCountOrders(result.asIntOr('count', 0)),
-          orders: JsonMap.listOf(result.raw('orders'), const <String>[]),
+          note: _countNote(l10n, result, rows),
+          orders: rows,
         );
       case 'product_search':
         return _productRows(
@@ -424,12 +515,15 @@ class _AiScreenState extends State<AiScreen> {
               .take(20)
               .map((JsonMap row) {
                 final Order order = Order(row.json);
+                final bool inbound = order.type == OrderType.inbound;
                 return TileRow(
-                  icon: Icons.receipt_long_rounded,
+                  icon: inbound ? Icons.south_west_rounded : Icons.north_east_rounded,
                   accent: AppInk.orders,
                   title: '${order.orderNumber} · ${order.customerName}',
-                  subtitle:
-                      '${Fmt.date(Fmt.parseIsoDate(order.orderDate))} · ${Fmt.count(order.totalQuantity)}',
+                  // 单据类型写在行上：速查一次给的是当天全部单据，不标出来就会把入库读成出库。
+                  subtitle: '${inbound ? l10n.ordInbound : l10n.ordOutbound} · '
+                      '${Fmt.date(Fmt.parseIsoDate(order.orderDate))} · '
+                      '${Fmt.count(order.totalQuantity)}',
                   trailing: Text(
                     Fmt.money(order.totalAmount, symbol: app.profile.currencySymbol),
                     style: const TextStyle(fontWeight: AppType.semi, color: AppInk.orders),
@@ -472,6 +566,19 @@ class _AiScreenState extends State<AiScreen> {
       ),
     ];
   }
+}
+
+class _Shortcut {
+  const _Shortcut(this.label, this.text, {this.only});
+
+  /// 按钮上给用户看的字，走本地化。
+  final String label;
+
+  /// 真正发出去的字：数据类问句必须是中文原文，正则兜底才认。
+  final String text;
+
+  /// 速查按日期拿到的是当天全部单据，这一位说明只想要哪一类。
+  final OrderType? only;
 }
 
 class _Turn {
@@ -592,6 +699,7 @@ class _Composer extends StatelessWidget {
     required this.listeningHint,
     required this.sendLabel,
     required this.voiceTooltip,
+    required this.shortcuts,
     required this.onSend,
     required this.onMic,
   });
@@ -604,11 +712,56 @@ class _Composer extends StatelessWidget {
   final String listeningHint;
   final String sendLabel;
   final String voiceTooltip;
+  final Widget? shortcuts;
   final VoidCallback onSend;
   final Future<void> Function() onMic;
 
   @override
   Widget build(BuildContext context) {
+    final Widget row = Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: <Widget>[
+        RoundIconButton(
+          icon: listening ? Icons.mic_rounded : Icons.mic_none_rounded,
+          color: listening ? AppInk.danger : AppInk.ai,
+          tooltip: voiceTooltip,
+          onPressed: busy ? null : onMic,
+        ),
+        const HGap(8),
+        Expanded(
+          child: Container(
+            constraints: const BoxConstraints(minHeight: Hit.min, maxHeight: 120),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            decoration: const BoxDecoration(color: AppInk.surfaceDim, borderRadius: Radii.control_),
+            child: TextField(
+              controller: controller,
+              focusNode: focusNode,
+              minLines: 1,
+              maxLines: 4,
+              textInputAction: TextInputAction.send,
+              onSubmitted: (_) => onSend(),
+              decoration: InputDecoration(
+                hintText: listening ? listeningHint : hint,
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                isDense: true,
+              ),
+            ),
+          ),
+        ),
+        const HGap(8),
+        PrimaryButton(
+          label: sendLabel,
+          icon: Icons.arrow_upward_rounded,
+          color: AppInk.ai,
+          loading: busy,
+          expanded: false,
+          onPressed: busy ? null : onSend,
+        ),
+      ],
+    );
+
     return SafeArea(
       top: false,
       child: Container(
@@ -617,59 +770,29 @@ class _Composer extends StatelessWidget {
           color: AppInk.surface,
           border: Border(top: BorderSide(color: AppInk.hairline)),
         ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: <Widget>[
-            RoundIconButton(
-              icon: listening ? Icons.mic_rounded : Icons.mic_none_rounded,
-              color: listening ? AppInk.danger : AppInk.ai,
-              tooltip: voiceTooltip,
-              onPressed: busy ? null : onMic,
-            ),
-            const HGap(8),
-            Expanded(
-              child: Container(
-                constraints: const BoxConstraints(minHeight: Hit.min, maxHeight: 120),
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                decoration: const BoxDecoration(color: AppInk.surfaceDim, borderRadius: Radii.control_),
-                child: TextField(
-                  controller: controller,
-                  focusNode: focusNode,
-                  minLines: 1,
-                  maxLines: 4,
-                  textInputAction: TextInputAction.send,
-                  onSubmitted: (_) => onSend(),
-                  decoration: InputDecoration(
-                    hintText: listening ? listeningHint : hint,
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                    focusedBorder: InputBorder.none,
-                    isDense: true,
-                  ),
-                ),
+        child: shortcuts == null
+            ? row
+            : Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  shortcuts!,
+                  const VGap(8),
+                  row,
+                ],
               ),
-            ),
-            const HGap(8),
-            PrimaryButton(
-              label: sendLabel,
-              icon: Icons.arrow_upward_rounded,
-              color: AppInk.ai,
-              loading: busy,
-              expanded: false,
-              onPressed: busy ? null : onSend,
-            ),
-          ],
-        ),
       ),
     );
   }
 }
 
 class _NotConfigured extends StatelessWidget {
-  const _NotConfigured({required this.config, required this.l10n});
+  const _NotConfigured({required this.config, required this.l10n, this.onLookup});
 
   final AiConfig config;
   final L10n l10n;
+
+  /// 只有「模块开着、缺模型密钥」时能给：速查不依赖密钥，可以直接切过去。
+  final VoidCallback? onLookup;
 
   @override
   Widget build(BuildContext context) {
@@ -695,6 +818,14 @@ class _NotConfigured extends StatelessWidget {
             ),
           ),
         const VGap(16),
+        if (onLookup != null)
+          PrimaryButton(
+            label: l10n.aiGoLookup,
+            icon: Icons.search_rounded,
+            color: AppInk.ai,
+            onPressed: onLookup,
+          ),
+        const VGap(10),
         GhostButton(
           label: l10n.setFeedback,
           icon: Icons.forum_rounded,

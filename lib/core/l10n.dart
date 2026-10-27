@@ -412,6 +412,7 @@ class L10n {
   String get aiDisclaimer => raw('ai_disclaimer');
   String get aiEmptyHint => raw('ai_empty_hint');
   String get aiEmptyTitle => raw('ai_empty_title');
+  String get aiGoLookup => raw('ai_go_lookup');
   String get aiKeyMissing => raw('ai_key_missing');
   String get aiListening => raw('ai_listening');
   String get aiLookupExample => raw('ai_lookup_example');
@@ -421,6 +422,10 @@ class L10n {
   String get aiModuleOff => raw('ai_module_off');
   String get aiNotFound => raw('ai_not_found');
   String get aiProducts => raw('ai_products');
+  String get aiQCanDo => raw('ai_q_can_do');
+  String get aiQHowExport => raw('ai_q_how_export');
+  String get aiQOrderStates => raw('ai_q_order_states');
+  String get aiQYesterday => raw('ai_q_yesterday');
   String get aiSend => raw('ai_send');
   String get aiTabChat => raw('ai_tab_chat');
   String get aiTabLookup => raw('ai_tab_lookup');
