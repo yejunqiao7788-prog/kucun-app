@@ -1,0 +1,381 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: {userId} (matches Firebase Auth UID)
+    // Fields:
+    //   - uid: string (required, immutable)
+    //   - email: string (required, email format)
+    //   - username: string (required, 1-50 chars)
+    //   - tenant_id: string (required, 1-64 chars)
+    //   - tenant_name: string (required, 1-100 chars)
+    //   - role: string (required, in ['admin', 'tenant_admin', 'user', 'owner'])
+    //   - status: string (required, in ['active', 'disabled'])
+    //   - subscription_status: string (required, in ['trial', 'active', 'expired'])
+    //   - subscription_expired: bool (required)
+    //   - currency_symbol: string (required, 1-10 chars)
+    //   - permissions: map (required, keys: dashboard, products, inventory, orders, showrooms, ai, finance)
+    //   - created_at: timestamp (required, immutable)
+    //   - updated_at: timestamp (required)
+    //
+    // Collection: products
+    // Document ID: {productId}
+    // Fields:
+    //   - id: string (required)
+    //   - tenant_id: string (required)
+    //   - sku: string (required, 1-100 chars)
+    //   - name: string (required, 1-200 chars)
+    //   - category_id: string (optional)
+    //   - category_name: string (optional)
+    //   - price: number (required, >= 0)
+    //   - cost: number (required, >= 0)
+    //   - unit: string (required, 1-20 chars)
+    //   - units_per_box: number (optional, > 1)
+    //   - box_price: number (optional, >= 0)
+    //   - description: string (optional, <= 2000 chars)
+    //   - image_url: string (optional, URL or null)
+    //   - image_urls: list of strings (optional, size <= 5)
+    //   - quantity: number (required, >= 0, base unit)
+    //   - min_stock: number (required, >= 0)
+    //   - max_stock: number (required, >= 0)
+    //   - location: string (optional, <= 100 chars)
+    //   - created_by: string (required, UID)
+    //   - created_at: timestamp (required, immutable)
+    //   - updated_at: timestamp (required)
+    //   - deleted_at: timestamp (optional)
+    //
+    // Collection: orders
+    // Document ID: {orderId}
+    // Fields:
+    //   - id: string (required)
+    //   - tenant_id: string (required)
+    //   - order_number: string (required, 1-50 chars)
+    //   - type: string (required, in ['inbound', 'outbound'])
+    //   - status: string (required, in ['pending', 'completed'])
+    //   - order_date: string (required, YYYY-MM-DD format)
+    //   - notes: string (optional, <= 1000 chars)
+    //   - is_preparing: bool (required)
+    //   - show_in_picking_list: bool (required)
+    //   - created_by: string (required, UID)
+    //   - customer_id: string (optional)
+    //   - customer_name: string (optional)
+    //   - total_quantity: number (required, >= 0)
+    //   - total_amount: number (required, >= 0)
+    //   - payable_amount: number (required, >= 0)
+    //   - paid_amount: number (required, >= 0)
+    //   - payment_status: string (required, in ['unpaid', 'partial', 'paid'])
+    //   - items: list of maps (required, size <= 500)
+    //   - completed_at: timestamp (optional)
+    //   - created_at: timestamp (required, immutable)
+    //   - updated_at: timestamp (required)
+    //
+    // Collection: stock_movements
+    // Document ID: {movementId}
+    // Fields:
+    //   - id: string (required)
+    //   - tenant_id: string (required)
+    //   - product_id: string (required)
+    //   - product_name: string (required)
+    //   - sku: string (required)
+    //   - order_id: string (optional)
+    //   - delta: number (required)
+    //   - quantity_after: number (required, >= 0)
+    //   - movement_type: string (required, in ['inbound', 'outbound', 'manual_adjust', 'import'])
+    //   - created_by: string (required, UID)
+    //   - created_at: timestamp (required, immutable)
+    //
+    // Collection: customers
+    // Document ID: {customerId}
+    // Fields:
+    //   - id: string (required)
+    //   - tenant_id: string (required)
+    //   - name: string (required, 1-100 chars)
+    //   - phone: string (optional, <= 30 chars)
+    //   - address: string (optional, <= 200 chars)
+    //   - debt_amount: number (required, >= 0)
+    //   - created_at: timestamp (required, immutable)
+    //   - updated_at: timestamp (required)
+    //
+    // Collection: showrooms
+    // Document ID: {showroomId}
+    // Fields:
+    //   - id: string (required)
+    //   - tenant_id: string (required)
+    //   - name: string (required, 1-100 chars)
+    //   - token: string (required, 1-100 chars)
+    //   - description: string (optional, <= 2000 chars)
+    //   - is_active: bool (required)
+    //   - item_ids: list of strings (size <= 1000)
+    //   - created_at: timestamp (required, immutable)
+    //   - updated_at: timestamp (required)
+    //
+    // Collection: feedback
+    // Document ID: {feedbackId}
+    // Fields:
+    //   - id: string (required)
+    //   - tenant_id: string (required)
+    //   - category: string (required, in ['bug', 'billing', 'marketplace', 'suggestion', 'other'])
+    //   - content: string (required, 5-2000 chars)
+    //   - created_by: string (required, UID)
+    //   - status: string (required, in ['pending', 'resolved', 'closed'])
+    //   - reply: string (optional, <= 2000 chars)
+    //   - created_at: timestamp (required, immutable)
+    //   - updated_at: timestamp (required)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function uidUnchanged() {
+      return !('uid' in request.resource.data) || request.resource.data.uid == request.auth.uid;
+    }
+
+    function uidNotModified() {
+      return !('uid' in request.resource.data) || request.resource.data.uid == resource.data.uid;
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    function areImmutableFieldsUnchanged(fields) {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(fields);
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function userInSameTenant(tenantId) {
+      return isAuthenticated() && getUserData().tenant_id == tenantId;
+    }
+
+    function userHasRole(roles) {
+      return isAuthenticated() && getUserData().role in roles;
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUser(data) {
+      return hasRequiredFields(['uid', 'email', 'username', 'tenant_id', 'tenant_name', 'role', 'status', 'subscription_status', 'subscription_expired', 'currency_symbol', 'permissions', 'created_at', 'updated_at']) &&
+        data.uid is string && data.uid.size() > 0 && data.uid.size() <= 128 &&
+        data.email is string && isValidEmail(data.email) &&
+        data.username is string && data.username.size() > 0 && data.username.size() <= 50 &&
+        data.tenant_id is string && data.tenant_id.size() > 0 && data.tenant_id.size() <= 64 &&
+        data.tenant_name is string && data.tenant_name.size() > 0 && data.tenant_name.size() <= 100 &&
+        data.role in ['admin', 'tenant_admin', 'user', 'owner'] &&
+        data.status in ['active', 'disabled'] &&
+        data.subscription_status in ['trial', 'active', 'expired'] &&
+        data.subscription_expired is bool &&
+        data.currency_symbol is string && data.currency_symbol.size() > 0 && data.currency_symbol.size() <= 10 &&
+        data.permissions is map &&
+        data.created_at is timestamp &&
+        data.updated_at is timestamp;
+    }
+
+    function isValidProduct(data) {
+      return hasRequiredFields(['id', 'tenant_id', 'sku', 'name', 'price', 'cost', 'unit', 'quantity', 'min_stock', 'max_stock', 'created_by', 'created_at', 'updated_at']) &&
+        data.id is string && data.id.size() > 0 && data.id.size() <= 64 &&
+        data.tenant_id is string && data.tenant_id.size() > 0 && data.tenant_id.size() <= 64 &&
+        data.sku is string && data.sku.size() > 0 && data.sku.size() <= 100 &&
+        data.name is string && data.name.size() > 0 && data.name.size() <= 200 &&
+        data.price is number && data.price >= 0 &&
+        data.cost is number && data.cost >= 0 &&
+        data.unit is string && data.unit.size() > 0 && data.unit.size() <= 20 &&
+        data.quantity is number &&
+        data.min_stock is number && data.min_stock >= 0 &&
+        data.max_stock is number && data.max_stock >= 0 &&
+        data.created_by is string &&
+        data.created_at is timestamp &&
+        data.updated_at is timestamp &&
+        (!('description' in data) || (data.description is string && data.description.size() <= 2000)) &&
+        (!('image_urls' in data) || (data.image_urls is list && data.image_urls.size() <= 5)) &&
+        (!('location' in data) || (data.location is string && data.location.size() <= 100));
+    }
+
+    function isValidOrder(data) {
+      return hasRequiredFields(['id', 'tenant_id', 'order_number', 'type', 'status', 'order_date', 'is_preparing', 'show_in_picking_list', 'created_by', 'total_quantity', 'total_amount', 'payable_amount', 'paid_amount', 'payment_status', 'items', 'created_at', 'updated_at']) &&
+        data.id is string && data.id.size() > 0 && data.id.size() <= 64 &&
+        data.tenant_id is string && data.tenant_id.size() > 0 && data.tenant_id.size() <= 64 &&
+        data.order_number is string && data.order_number.size() > 0 && data.order_number.size() <= 50 &&
+        data.type in ['inbound', 'outbound'] &&
+        data.status in ['pending', 'completed'] &&
+        data.order_date is string && data.order_date.matches("^\\d{4}-\\d{2}-\\d{2}$") &&
+        data.is_preparing is bool &&
+        data.show_in_picking_list is bool &&
+        data.created_by is string &&
+        data.total_quantity is number && data.total_quantity >= 0 &&
+        data.total_amount is number && data.total_amount >= 0 &&
+        data.payable_amount is number && data.payable_amount >= 0 &&
+        data.paid_amount is number && data.paid_amount >= 0 &&
+        data.payment_status in ['unpaid', 'partial', 'paid'] &&
+        data.items is list && data.items.size() <= 500 &&
+        data.created_at is timestamp &&
+        data.updated_at is timestamp &&
+        (!('notes' in data) || (data.notes is string && data.notes.size() <= 1000));
+    }
+
+    function isValidStockMovement(data) {
+      return hasRequiredFields(['id', 'tenant_id', 'product_id', 'product_name', 'sku', 'delta', 'quantity_after', 'movement_type', 'created_by', 'created_at']) &&
+        data.id is string && data.id.size() > 0 && data.id.size() <= 64 &&
+        data.tenant_id is string && data.tenant_id.size() > 0 && data.tenant_id.size() <= 64 &&
+        data.product_id is string && data.product_id.size() > 0 && data.product_id.size() <= 64 &&
+        data.sku is string && data.sku.size() > 0 && data.sku.size() <= 100 &&
+        data.product_name is string && data.product_name.size() > 0 && data.product_name.size() <= 200 &&
+        data.delta is number &&
+        data.quantity_after is number && data.quantity_after >= 0 &&
+        data.movement_type in ['inbound', 'outbound', 'manual_adjust', 'import'] &&
+        data.created_by is string &&
+        data.created_at is timestamp;
+    }
+
+    function isValidCustomer(data) {
+      return hasRequiredFields(['id', 'tenant_id', 'name', 'debt_amount', 'created_at', 'updated_at']) &&
+        data.id is string && data.id.size() > 0 && data.id.size() <= 64 &&
+        data.tenant_id is string && data.tenant_id.size() > 0 && data.tenant_id.size() <= 64 &&
+        data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+        data.debt_amount is number && data.debt_amount >= 0 &&
+        data.created_at is timestamp &&
+        data.updated_at is timestamp &&
+        (!('phone' in data) || (data.phone is string && data.phone.size() <= 30)) &&
+        (!('address' in data) || (data.address is string && data.address.size() <= 200));
+    }
+
+    function isValidShowroom(data) {
+      return hasRequiredFields(['id', 'tenant_id', 'name', 'token', 'is_active', 'item_ids', 'created_at', 'updated_at']) &&
+        data.id is string && data.id.size() > 0 && data.id.size() <= 64 &&
+        data.tenant_id is string && data.tenant_id.size() > 0 && data.tenant_id.size() <= 64 &&
+        data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+        data.token is string && data.token.size() > 0 && data.token.size() <= 100 &&
+        data.is_active is bool &&
+        data.item_ids is list && data.item_ids.size() <= 1000 &&
+        data.created_at is timestamp &&
+        data.updated_at is timestamp &&
+        (!('description' in data) || (data.description is string && data.description.size() <= 2000));
+    }
+
+    function isValidFeedback(data) {
+      return hasRequiredFields(['id', 'tenant_id', 'category', 'content', 'created_by', 'status', 'created_at', 'updated_at']) &&
+        data.id is string && data.id.size() > 0 && data.id.size() <= 64 &&
+        data.tenant_id is string && data.tenant_id.size() > 0 && data.tenant_id.size() <= 64 &&
+        data.category in ['bug', 'billing', 'marketplace', 'suggestion', 'other'] &&
+        data.content is string && data.content.size() >= 5 && data.content.size() <= 2000 &&
+        data.created_by is string && data.created_by == request.auth.uid &&
+        data.status in ['pending', 'resolved', 'closed'] &&
+        data.created_at is timestamp &&
+        data.updated_at is timestamp &&
+        (!('reply' in data) || (data.reply is string && data.reply.size() <= 2000));
+    }
+
+    // ===============================================================
+    // Collection Rules
+    // ===============================================================
+
+    // 1. Users collection: Strictly scoped to the authenticated user's own document (No mixed content leak)
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow create: if isAuthenticated() && isOwner(userId) && uidUnchanged() && isValidUser(request.resource.data);
+      allow update: if isAuthenticated() && isOwner(userId) && uidNotModified() && 
+                    areImmutableFieldsUnchanged(['uid', 'tenant_id', 'role', 'created_at']) && 
+                    isValidUser(request.resource.data);
+      allow delete: if false; // Users cannot self-delete user profiles directly
+    }
+
+    // 2. Products collection: Tenant isolation
+    match /products/{productId} {
+      allow read: if isAuthenticated() && userInSameTenant(resource.data.tenant_id);
+      allow create: if isAuthenticated() && userInSameTenant(request.resource.data.tenant_id) && 
+                    request.resource.data.created_by == request.auth.uid &&
+                    isValidProduct(request.resource.data);
+      allow update: if isAuthenticated() && userInSameTenant(resource.data.tenant_id) && 
+                    userInSameTenant(request.resource.data.tenant_id) &&
+                    areImmutableFieldsUnchanged(['id', 'tenant_id', 'created_by', 'created_at']) &&
+                    isValidProduct(request.resource.data);
+      allow delete: if isAuthenticated() && userInSameTenant(resource.data.tenant_id) &&
+                    userHasRole(['admin', 'tenant_admin', 'owner']);
+    }
+
+    // 3. Orders collection: Tenant isolation, draft -> completed transition validation
+    match /orders/{orderId} {
+      allow read: if isAuthenticated() && userInSameTenant(resource.data.tenant_id);
+      allow create: if isAuthenticated() && userInSameTenant(request.resource.data.tenant_id) && 
+                    request.resource.data.created_by == request.auth.uid &&
+                    isValidOrder(request.resource.data);
+      allow update: if isAuthenticated() && userInSameTenant(resource.data.tenant_id) && 
+                    userInSameTenant(request.resource.data.tenant_id) &&
+                    areImmutableFieldsUnchanged(['id', 'tenant_id', 'order_number', 'type', 'created_by', 'created_at']) &&
+                    isValidOrder(request.resource.data);
+      allow delete: if isAuthenticated() && userInSameTenant(resource.data.tenant_id) &&
+                    resource.data.status == 'pending'; // Only draft orders can be deleted
+    }
+
+    // 4. Stock Movements: Append-only ledger
+    match /stock_movements/{movementId} {
+      allow read: if isAuthenticated() && userInSameTenant(resource.data.tenant_id);
+      allow create: if isAuthenticated() && userInSameTenant(request.resource.data.tenant_id) && 
+                    request.resource.data.created_by == request.auth.uid &&
+                    isValidStockMovement(request.resource.data);
+      allow update: if false; // Ledger is append-only, immutable!
+      allow delete: if false; // Ledger entries cannot be deleted!
+    }
+
+    // 5. Customers collection: Tenant isolation
+    match /customers/{customerId} {
+      allow read: if isAuthenticated() && userInSameTenant(resource.data.tenant_id);
+      allow create: if isAuthenticated() && userInSameTenant(request.resource.data.tenant_id) && 
+                    isValidCustomer(request.resource.data);
+      allow update: if isAuthenticated() && userInSameTenant(resource.data.tenant_id) && 
+                    userInSameTenant(request.resource.data.tenant_id) &&
+                    areImmutableFieldsUnchanged(['id', 'tenant_id', 'created_at']) &&
+                    isValidCustomer(request.resource.data);
+      allow delete: if isAuthenticated() && userInSameTenant(resource.data.tenant_id) &&
+                    userHasRole(['admin', 'tenant_admin', 'owner']);
+    }
+
+    // 6. Showrooms collection
+    match /showrooms/{showroomId} {
+      allow read: if isAuthenticated() && userInSameTenant(resource.data.tenant_id);
+      allow create: if isAuthenticated() && userInSameTenant(request.resource.data.tenant_id) && 
+                    isValidShowroom(request.resource.data);
+      allow update: if isAuthenticated() && userInSameTenant(resource.data.tenant_id) && 
+                    userInSameTenant(request.resource.data.tenant_id) &&
+                    areImmutableFieldsUnchanged(['id', 'tenant_id', 'token', 'created_at']) &&
+                    isValidShowroom(request.resource.data);
+      allow delete: if isAuthenticated() && userInSameTenant(resource.data.tenant_id) &&
+                    userHasRole(['admin', 'tenant_admin', 'owner']);
+    }
+
+    // 7. Feedback collection: Tenant members can create and read their tenant feedback
+    match /feedback/{feedbackId} {
+      allow read: if isAuthenticated() && userInSameTenant(resource.data.tenant_id);
+      allow create: if isAuthenticated() && userInSameTenant(request.resource.data.tenant_id) && 
+                    request.resource.data.created_by == request.auth.uid &&
+                    isValidFeedback(request.resource.data);
+      allow update: if isAuthenticated() && userInSameTenant(resource.data.tenant_id) && 
+                    userHasRole(['admin', 'tenant_admin']) &&
+                    isValidFeedback(request.resource.data);
+      allow delete: if false;
+    }
+  }
+}

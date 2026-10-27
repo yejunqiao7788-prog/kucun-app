@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "87026009668",
+    "project_id": "torgseek",
+    "storage_bucket": "torgseek.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:87026009668:android:33b8f7f2a169a9aad4de11",
+        "android_client_info": {
+          "package_name": "com.torgseek.kucun"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDj90GsE3Z2RzmFfSfFN_AeWLM2brOkffA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
