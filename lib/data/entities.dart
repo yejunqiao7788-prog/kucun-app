@@ -670,6 +670,26 @@ class ImportOutcome extends JsonMap {
   }
 }
 
+/// 批量改价的回执同样是逐行统计，不是整批成败：一部分商品可能因为成本为空、
+/// 价格越界而单独失败，`failed_examples` 只回前若干条。
+class BatchPriceResult extends JsonMap {
+  const BatchPriceResult(super.json);
+
+  int get updatedCount => asIntOr('updated_count', 0);
+  int get unchangedCount => asIntOr('unchanged_count', 0);
+  int get failedCount => asIntOr('failed_count', 0);
+
+  List<String> get failureHints => asList('failed_examples')
+      .map((JsonMap row) {
+        final String sku = row.asStringOr('sku', '');
+        final String message = row.asStringOr('message', '');
+        if (message.isEmpty) return sku;
+        return sku.isEmpty ? message : '$sku $message';
+      })
+      .where((String text) => text.isNotEmpty)
+      .toList(growable: false);
+}
+
 /// `/data/external-preview` 把外部 YML / XML 商品源解析成整店统计加待写行，
 /// `items` 原样透传给导入与同步，客户端不参与字段拼装。
 class ExternalPreview extends JsonMap {

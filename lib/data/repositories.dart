@@ -202,15 +202,21 @@ class ProductRepo {
 
   /// 模式只有四种：`set`（定价）、`markup_cost`（按成本加成）、`percent`（按比例）、
   /// `amount`（按绝对额）。单次上限 500 件，键名是 `product_ids`。
-  Future<Object?> batchPrice({
+  /// 回执是逐行统计，五百件里失败十几件很常见，所以这里不能只看请求成没成。
+  Future<BatchPriceResult> batchPrice({
     required List<String> ids,
     required String mode,
     required double value,
-  }) =>
-      api.post(
-        '/products/batch-price',
-        body: <String, Object?>{'product_ids': ids, 'mode': mode, 'value': value},
-        tenantId: tenant(),
+  }) async =>
+      BatchPriceResult(
+        JsonMap.from(
+          await api.post(
+            '/products/batch-price',
+            body: <String, Object?>{'product_ids': ids, 'mode': mode, 'value': value},
+            tenantId: tenant(),
+            heavy: true,
+          ),
+        ).json,
       );
 
   /// 表格导入：解析在客户端做，服务端只认这一套字段名（`sku/name/category/price/cost/`

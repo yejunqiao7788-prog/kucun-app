@@ -458,6 +458,21 @@ class L10n {
   String get prodBatchHintAmount => raw('prod_batch_hint_amount');
   String get prodBatchHintPercent => raw('prod_batch_hint_percent');
   String get prodBatchValue => raw('prod_batch_value');
+  String prodBatchTitle(Object count) =>
+      fill('prod_batch_title', <String, Object>{'count': count});
+  String prodBatchConfirm(Object count) =>
+      fill('prod_batch_confirm', <String, Object>{'count': count});
+  String prodBatchResult({
+    required Object updated,
+    required Object unchanged,
+    required Object failed,
+  }) =>
+      fill('prod_batch_result', <String, Object>{
+        'updated': updated,
+        'unchanged': unchanged,
+        'failed': failed,
+      });
+  String get prodBatchValueRequired => raw('prod_batch_value_required');
   String get invDefaultLocation => raw('inv_default_location');
   String get ordSearchHint => raw('ord_search_hint');
   String get ordDateFrom => raw('ord_date_from');

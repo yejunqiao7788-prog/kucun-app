@@ -243,26 +243,50 @@ class _ProductPanelState extends State<ProductPanel> {
 
   Future<void> _batchPrice() async {
     final AppState app = AppState.of(context);
+    final L10n l10n = app.l10n;
+    final int count = _selected.length;
     final _PriceEdit? edit = await showDrawer<_PriceEdit>(
       context,
       accent: AppInk.products,
-      title: app.l10n.prodBatchPrice,
+      title: l10n.prodBatchTitle(count),
       builder: (BuildContext sheetContext) => const _PriceDrawer(),
     );
     if (edit == null || !mounted) return;
-    final List<String> ids = _selected.toList();
+    // 一次写几百行售价，网页端在提交前有一次确认，App 不能直接落库。
+    final bool sure = await confirmAction(
+      context,
+      title: l10n.prodBatchPrice,
+      message: l10n.prodBatchConfirm(count),
+      confirmLabel: l10n.actApply,
+    );
+    if (!sure || !mounted) return;
     try {
-      await app.guardWrite<void>(
-        () => _repos.products.batchPrice(ids: ids, mode: edit.mode, value: edit.value),
+      final BatchPriceResult result = await app.guardWrite<BatchPriceResult>(
+        () => _repos.products.batchPrice(
+          ids: _selected.toList(),
+          mode: edit.mode,
+          value: edit.value,
+        ),
       );
       if (!mounted) return;
-      showToast(context, app.l10n.commonSaved);
+      showToast(context, _priceReceipt(l10n, result), danger: result.failedCount > 0);
       setState(_selected.clear);
       await _list.refresh();
     } on Object catch (error) {
       if (!mounted) return;
       showToast(context, app.describeError(error), danger: true);
     }
+  }
+
+  /// 服务端按行回执，部分失败是常态：把三段计数说清楚，再带上前几条 SKU。
+  String _priceReceipt(L10n l10n, BatchPriceResult result) {
+    final String receipt = l10n.prodBatchResult(
+      updated: result.updatedCount,
+      unchanged: result.unchangedCount,
+      failed: result.failedCount,
+    );
+    if (result.failedCount == 0 || result.failureHints.isEmpty) return receipt;
+    return '$receipt（${result.failureHints.take(3).join('；')}）';
   }
 
   Future<void> _openFilters() async {
@@ -637,7 +661,8 @@ class _PriceDrawerState extends State<_PriceDrawer> {
   /// 服务端只认这四支模式，`set`/`markup_cost` 还拒绝负数。
   static const List<String> _modes = <String>['set', 'markup_cost', 'percent', 'amount'];
 
-  String _mode = 'percent';
+  /// 默认按成本加成：外部导入的商品有成本没售价，这一档用得最多（和网页端一致）。
+  String _mode = 'markup_cost';
 
   bool get _allowNegative => _mode == 'percent' || _mode == 'amount';
 
@@ -706,8 +731,12 @@ class _PriceDrawerState extends State<_PriceDrawer> {
           label: l10n.actApply,
           color: AppInk.products,
           onPressed: () {
-            final double parsed = double.tryParse(_value.text.trim()) ?? 0;
-            if (parsed == 0) return;
+            // 统一售价填 0 是合法写法，不能和没填混为一谈：只拦解析不出来的。
+            final double? parsed = double.tryParse(_value.text.trim());
+            if (parsed == null) {
+              showToast(context, l10n.prodBatchValueRequired);
+              return;
+            }
             Navigator.of(context).pop(_PriceEdit(_mode, parsed));
           },
         ),
