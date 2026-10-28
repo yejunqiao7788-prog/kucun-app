@@ -24,6 +24,8 @@ dependencies:
   record: ^7.1.2
   file_picker: ^13.3.0
   excel: ^4.0.6
+  printing: ^5.14.3
+  pdf: ^3.12.0
 
 dev_dependencies:
   flutter_test:
@@ -32,3 +34,9 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    # 单据 PDF 需要自带字形：pdf 引擎不吃系统字体。Noto Sans 管拉丁/西里尔/越南文两个
+    # 字重，Noto Sans SC 只做汉字兜底。
+    - assets/fonts/NotoSans-Regular.ttf
+    - assets/fonts/NotoSans-Bold.ttf
+    - assets/fonts/NotoSansSC-Regular.ttf

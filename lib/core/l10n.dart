@@ -107,6 +107,7 @@ class L10n {
   String get actSelectAll => raw('act_select_all');
   String get actPaste => raw('act_paste');
   String get actApply => raw('act_apply');
+  String get actPrint => raw('act_print');
   String get actContinue => raw('act_continue');
   String get actSkip => raw('act_skip');
   String get commonAll => raw('common_all');
@@ -491,6 +492,7 @@ class L10n {
   String get ordFinaliseInHint => raw('ord_finalise_in_hint');
   String get ordCash => raw('ord_cash');
   String get ordTransfer => raw('ord_transfer');
+  String get ordPrintTitle => raw('ord_print_title');
   String get setCustomersInSettings => raw('set_customers_in_settings');
   String get actNew => raw('act_new');
   String get actOpen => raw('act_open');
@@ -558,6 +560,24 @@ class L10n {
   String get finVoid => raw('fin_void');
   String get finVoidConfirm => raw('fin_void_confirm');
   String get finWalletNone => raw('fin_wallet_none');
+  String get sheetDocInbound => raw('sheet_doc_inbound');
+  String get sheetDocOutbound => raw('sheet_doc_outbound');
+  String get sheetMetaOrderNo => raw('sheet_meta_order_no');
+  String get sheetMetaDate => raw('sheet_meta_date');
+  String get sheetMetaCustomer => raw('sheet_meta_customer');
+  String get sheetMetaPhone => raw('sheet_meta_phone');
+  String get sheetColProduct => raw('sheet_col_product');
+  String get sheetColQty => raw('sheet_col_qty');
+  String get sheetColUnitPrice => raw('sheet_col_unit_price');
+  String get sheetColSubtotal => raw('sheet_col_subtotal');
+  String get sheetColImage => raw('sheet_col_image');
+  String get sheetEmptyRows => raw('sheet_empty_rows');
+  String get sheetTotal => raw('sheet_total');
+  String get sheetNotesPrefix => raw('sheet_notes_prefix');
+  String get sheetSignHandler => raw('sheet_sign_handler');
+  String get sheetSignCustomer => raw('sheet_sign_customer');
+  String sheetBoxLine({required Object boxes, required Object perBox}) =>
+      fill('sheet_box_line', <String, Object>{'boxes': boxes, 'perBox': perBox});
   String get shrAddProducts => raw('shr_add_products');
   String get shrAllowOrder => raw('shr_allow_order');
   String get shrBasics => raw('shr_basics');

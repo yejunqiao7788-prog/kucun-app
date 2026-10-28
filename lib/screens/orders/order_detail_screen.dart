@@ -1,9 +1,13 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+import 'package:printing/printing.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/formatters.dart';
 import '../../core/api_client.dart';
 import '../../core/l10n.dart';
+import '../../core/print_sheet.dart';
 import '../../data/entities.dart';
 import '../../data/repositories.dart';
 import '../../design/tokens.dart';
@@ -41,6 +45,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   Map<int, PickingMark> _marks = <int, PickingMark>{};
   bool _loading = true;
   bool _busy = false;
+  bool _printing = false;
   String? _error;
 
   @override
@@ -230,6 +235,38 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     }
   }
 
+  // ------------------------------------------------------------ 打印单据
+
+  /// 单据在客户端出 PDF：读一次 `/print-settings`（模板尺寸与三个显示开关），排好版
+  /// 再交给系统打印面板。纸张尺寸由模板定死，不让面板二次排版；收款信息照网页端约定
+  /// 不上单据。
+  Future<void> _print() async {
+    final AppState app = AppState.of(context);
+    final Order? order = _order;
+    if (order == null || _busy || _printing) return;
+    setState(() => _printing = true);
+    try {
+      final PrintSettings settings = await _repos.settings.printSettings();
+      final Uint8List pdf = await OrderSheet.build(
+        order: order,
+        settings: settings,
+        l10n: app.l10n,
+        currencySymbol: app.profile.currencySymbol,
+      );
+      if (!mounted) return;
+      await Printing.layoutPdf(
+        name: order.orderNumber,
+        dynamicLayout: false,
+        onLayout: (_) async => pdf,
+      );
+    } on Object catch (error) {
+      if (!mounted) return;
+      showToast(context, app.describeError(error), danger: true);
+    } finally {
+      if (mounted) setState(() => _printing = false);
+    }
+  }
+
   Future<void> _openPayment() async {
     final AppState app = AppState.of(context);
     final Order? order = _order;
@@ -298,6 +335,18 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           overflow: TextOverflow.ellipsis,
         ),
         actions: <Widget>[
+          if (order != null)
+            IconButton(
+              tooltip: l10n.ordPrintTitle,
+              onPressed: _busy || _printing ? null : _print,
+              icon: _printing
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.print_outlined),
+            ),
           if (order != null && draft && app.canWrite)
             IconButton(
               tooltip: l10n.actDelete,
