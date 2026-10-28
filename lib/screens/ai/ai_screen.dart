@@ -1,10 +1,16 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
+import 'package:record/record.dart';
 import 'package:speech_to_text/speech_recognition_error.dart';
 import 'package:speech_to_text/speech_recognition_result.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 
 import '../../core/access.dart';
+import '../../core/api_exception.dart';
 import '../../core/formatters.dart';
 import '../../core/l10n.dart';
 import '../../data/entities.dart';
@@ -29,6 +35,10 @@ import '../orders/order_detail_screen.dart';
 /// 输入框上方常驻一排快捷发送：问答那边是服务端 `quick_prompts`（没配就用本地兜底的用法
 /// 问题，绝不放需要家底数据的问题，模型手里没有），速查这边是今日出库/今日入库/昨天的订单，
 /// 发出去的都是正则兜底认得的中文原文。
+///
+/// 语音有两条通道：系统听写（`speech_to_text`，边说边出字）和服务端录音转写
+/// （录一段 m4a 交给 `/speech/transcribe`）。后者是原项目就给 Web Speech 不可用设备留的
+/// 回落，在国产 ROM 上往往是唯一能用的一条；系统听写起不来时自动走它。
 class AiScreen extends StatefulWidget {
   const AiScreen({super.key});
 
@@ -60,6 +70,15 @@ class _AiScreenState extends State<AiScreen> {
   bool _sttInitialised = false;
   bool _listening = false;
 
+  final AudioRecorder _rec = AudioRecorder();
+  Timer? _tick;
+  bool _recording = false;
+  bool _transcribing = false;
+  int _recordSeconds = 0;
+
+  /// 上游 25 秒硬超时，60 秒的音频已经贴着天花板；再长就让它到点自己停。
+  static const int _recordCapSeconds = 60;
+
   int _tab = 0;
 
   /// build 直接读 `_config.value/errorText`，没有 AnimatedBuilder 接手，得自己挂监听，
@@ -82,9 +101,11 @@ class _AiScreenState extends State<AiScreen> {
     _scroll.dispose();
     _input.dispose();
     _focus.dispose();
+    _tick?.cancel();
     if (_sttInitialised && _stt.isListening) {
       _stt.stop();
     }
+    _rec.dispose();
     super.dispose();
   }
 
@@ -222,21 +243,52 @@ class _AiScreenState extends State<AiScreen> {
     final bool busy = _tab == 0 ? _sending : _looking;
     return SizedBox(
       height: 38,
-      child: ListView.separated(
+      child: ListView(
         scrollDirection: Axis.horizontal,
-        padding: EdgeInsets.zero,
-        itemCount: items.length,
-        separatorBuilder: (BuildContext context, int index) => const HGap(8),
-        itemBuilder: (BuildContext context, int index) => _PromptChip(
-          label: items[index].label,
-          onTap: busy ? null : () => _applyShortcut(items[index]),
-        ),
+        children: <Widget>[
+          // 录音转写排在最前面：它不依赖系统语音识别，是唯一保证能用的口述入口。
+          _PromptChip(label: l10n.aiRecord, onTap: busy || _transcribing ? null : _startRecording),
+          for (final _Shortcut item in items) ...<Widget>[
+            const HGap(8),
+            _PromptChip(
+              label: item.label,
+              onTap: busy ? null : () => _applyShortcut(item),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// 录音时快捷发送整排让位给这一条：此刻用户要的只有「停」和「算了」。
+  Widget _recordingStrip(L10n l10n) {
+    return SizedBox(
+      height: 38,
+      child: Row(
+        children: <Widget>[
+          const Icon(Icons.mic_rounded, size: 16, color: AppInk.danger),
+          const HGap(8),
+          Expanded(
+            child: Text(
+              l10n.aiRecordCap,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: AppType.micro, color: AppInk.textTertiary),
+            ),
+          ),
+          TextAction(label: l10n.aiRecordCancel, color: AppInk.textSecondary, onPressed: _cancelRecording),
+        ],
       ),
     );
   }
 
   Future<void> _toggleMic() async {
     final AppState app = AppState.of(context);
+    if (_recording) {
+      await _stopRecording();
+      return;
+    }
+    if (_transcribing) return;
     if (_listening) {
       await _stt.stop();
       if (!mounted) return;
@@ -253,7 +305,8 @@ class _AiScreenState extends State<AiScreen> {
       );
       if (!mounted) return;
       if (!_sttInitialised) {
-        showToast(context, app.l10n.aiMicUnavailable, danger: true);
+        // 系统识别装不上（国产 ROM 上很常见）——直接改用服务端转写，别把人退回打字。
+        await _startRecording();
         return;
       }
     }
@@ -279,6 +332,122 @@ class _AiScreenState extends State<AiScreen> {
     );
     if (!mounted) return;
     setState(() => _listening = false);
+  }
+
+  /// 录一段交给 `/speech/transcribe`：这是原项目给 Web Speech 不可用的设备留的回落通道。
+  /// 16 kHz 单声道够 Whisper 认字，文件也小；到 60 秒自己停，不靠用户记得收。
+  Future<void> _startRecording() async {
+    if (_recording || _transcribing) return;
+    final AppState app = AppState.of(context);
+    // 系统听写还开着就先把麦克风交出来：安卓上两个录音源只会一起失败。
+    if (_listening) {
+      await _stt.stop();
+      if (!mounted) return;
+      setState(() => _listening = false);
+    }
+    final bool allowed = await _rec.hasPermission();
+    if (!mounted) return;
+    if (!allowed) {
+      showToast(context, app.l10n.aiRecordDenied, danger: true);
+      return;
+    }
+    final Directory dir = await getTemporaryDirectory();
+    final String path = '${dir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
+    try {
+      await _rec.start(
+        const RecordConfig(
+          encoder: AudioEncoder.aacLc,
+          bitRate: 64000,
+          sampleRate: 16000,
+          numChannels: 1,
+        ),
+        path: path,
+      );
+    } on Object catch (error) {
+      if (!mounted) return;
+      showToast(context, app.describeError(error), danger: true);
+      return;
+    }
+    if (!mounted) return;
+    setState(() {
+      _recording = true;
+      _recordSeconds = 0;
+    });
+    _tick = Timer.periodic(const Duration(seconds: 1), (Timer timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      setState(() => _recordSeconds += 1);
+      if (_recordSeconds >= _recordCapSeconds) _stopRecording();
+    });
+  }
+
+  Future<void> _stopRecording() async {
+    if (!_recording) return;
+    _tick?.cancel();
+    _tick = null;
+    final AppState app = AppState.of(context);
+    String? path;
+    try {
+      path = await _rec.stop();
+    } on Object catch (error) {
+      if (!mounted) return;
+      setState(() => _recording = false);
+      showToast(context, app.describeError(error), danger: true);
+      return;
+    }
+    if (!mounted) return;
+    setState(() {
+      _recording = false;
+      _recordSeconds = 0;
+      _transcribing = true;
+    });
+
+    String text = '';
+    String? failure;
+    try {
+      if (path == null) throw const FileSystemException('录音没落盘');
+      final File file = File(path);
+      final List<int> bytes = await file.readAsBytes();
+      try {
+        if (bytes.isEmpty) throw const FileSystemException('录音是空的');
+        text = await _repos.ai.transcribe(bytes, mimeType: 'audio/mp4');
+      } finally {
+        // 转写失败也要清掉临时录音，不然每次说不清都留一个 m4a 在缓存里。
+        try {
+          await file.delete();
+        } on Object catch (_) {}
+      }
+    } on Object catch (error) {
+      failure = error is ApiException ? app.describeError(error) : app.l10n.aiRecordFailed;
+    }
+    if (!mounted) return;
+    setState(() => _transcribing = false);
+    final String words = text.trim();
+    if (failure != null || words.isEmpty) {
+      showToast(context, failure ?? app.l10n.aiRecordFailed, danger: true);
+      return;
+    }
+    _input.text = words;
+    _input.selection = TextSelection.collapsed(offset: words.length);
+    if (_tab == 1) {
+      _lookupNow(words);
+    } else {
+      _ask(words);
+    }
+  }
+
+  Future<void> _cancelRecording() async {
+    if (!_recording) return;
+    _tick?.cancel();
+    _tick = null;
+    await _rec.cancel();
+    if (!mounted) return;
+    setState(() {
+      _recording = false;
+      _recordSeconds = 0;
+    });
   }
 
   @override
@@ -355,13 +524,13 @@ class _AiScreenState extends State<AiScreen> {
           _Composer(
             controller: _input,
             focusNode: _focus,
-            busy: _tab == 0 ? _sending : _looking,
-            listening: _listening,
+            busy: _sending || _looking || _transcribing,
+            listening: _listening || _recording,
             hint: l10n.aiPlaceholder,
-            listeningHint: l10n.aiListening,
+            listeningHint: _recording ? l10n.aiRecording(_recordSeconds) : l10n.aiListening,
             sendLabel: l10n.aiSend,
-            voiceTooltip: l10n.aiVoice,
-            shortcuts: _stripIfUsable(config),
+            voiceTooltip: _recording ? l10n.actDone : l10n.aiVoice,
+            shortcuts: _recording ? _recordingStrip(l10n) : _stripIfUsable(config),
             onSend: () => _tab == 0 ? _ask(_input.text) : _lookupNow(_input.text),
             onMic: _toggleMic,
           ),

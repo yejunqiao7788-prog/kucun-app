@@ -213,6 +213,32 @@ class ProductRepo {
         tenantId: tenant(),
       );
 
+  /// 表格导入：解析在客户端做，服务端只认这一套字段名（`sku/name/category/price/cost/`
+  /// `units_per_box/box_price/quantity/min_stock/max_stock/location` + `tenant_id`）。
+  /// 一次 50 行是原项目的节流值，重复 SKU 与坏值都从 `failures` 里回，不是整批失败。
+  Future<ImportOutcome> importRows(List<Map<String, Object?>> items) async => ImportOutcome(
+        JsonMap.from(
+          await api.post(
+            '/products/import',
+            body: <String, Object?>{'items': items},
+            tenantId: tenant(),
+            heavy: true,
+          ),
+        ).json,
+      );
+
+  /// 只修库存：形状同上，但走 `/import-corrections`，不碰价格与名称。
+  Future<ImportOutcome> importCorrections(List<Map<String, Object?>> items) async => ImportOutcome(
+        JsonMap.from(
+          await api.post(
+            '/products/import-corrections',
+            body: <String, Object?>{'items': items},
+            tenantId: tenant(),
+            heavy: true,
+          ),
+        ).json,
+      );
+
   /// 保留策略预览：服务端把 `dry_run` 钉死在 SQL 包装函数里，这一刀无论传什么都不可能写库。
   /// 窗口留空即用服务端默认值，出参会回显生效的 `zero_stock_days/soft_delete_days` 与两枚 cutoff。
   Future<RetentionReport> retentionPreview({int? zeroStockDays, int? softDeleteDays}) async =>
@@ -375,7 +401,7 @@ class OrderRepo {
         .toList();
   }
 
-  Future<List<Order>> productHistory(String productId, {int limit = 20}) async {
+  Future<List<ProductHistoryEntry>> productHistory(String productId, {int limit = 20}) async {
     final Object? data = await _get(
       api,
       '/orders/product-history',
@@ -383,7 +409,7 @@ class OrderRepo {
       tenant: tenant,
     );
     return JsonMap.rawListOf(data, <String>['orders', 'data'])
-        .map(Order.new)
+        .map(ProductHistoryEntry.new)
         .toList();
   }
 
@@ -581,19 +607,6 @@ class MarketRepo {
         body: <String, Object?>{'action': action},
         tenantId: tenant(),
       );
-
-  /// 资质文件必须带 `listing_id`，服务端没有它直接 400。
-  Future<List<MpDocument>> documents(String listingId) async {
-    final Object? data = await _get(
-      api,
-      '/marketplace/documents',
-      query: <String, Object?>{'listing_id': listingId},
-      tenant: tenant,
-    );
-    return JsonMap.rawListOf(data, <String>['items', 'documents'])
-        .map(MpDocument.new)
-        .toList(growable: false);
-  }
 
   /// 文件本体先上传到私有桶，这里只登记对象路径。
   /// 服务端校验路径必须以 `<tenant_id>/` 开头，且不收完整 URL。
@@ -1081,6 +1094,60 @@ class SettingsRepo {
 
   Future<JsonMap> fullExport() async => JsonMap.from(
       await _get(api, '/data/full-export', tenant: tenant, heavy: true));
+
+  // ———— 外部商品源（YML / XML）————
+  //
+  // 单次请求 60 s 封顶，而一整店的外部行动辄上千，所以导入与同步都由调用方按块喂，
+  // 这里只保证「一块一次请求」。
+
+  Future<ExternalPreview> externalPreview(String url) async => ExternalPreview(
+        JsonMap.from(await api.post(
+          '/data/external-preview',
+          body: <String, Object?>{'url': url},
+          tenantId: tenant(),
+          heavy: true,
+        )).json,
+      );
+
+  Future<ImportOutcome> externalImportChunk(
+    List<JsonMap> items, {
+    required bool downloadImages,
+    required bool priceAsCost,
+    int? markupPercent,
+  }) async =>
+      ImportOutcome(JsonMap.from(await api.post(
+        '/data/external-import',
+        body: <String, Object?>{
+          'items': items.map((JsonMap row) => row.json).toList(growable: false),
+          'download_images': downloadImages,
+          'price_as_cost': priceAsCost,
+          'markup_percent': markupPercent,
+        },
+        tenantId: tenant(),
+        heavy: true,
+      )).json);
+
+  Future<ExternalSyncOutcome> externalSyncChunk(
+    List<JsonMap> items, {
+    required bool updatePrice,
+    required bool updateStock,
+    required String priceTarget,
+    int? markupPercent,
+    required String source,
+  }) async =>
+      ExternalSyncOutcome(JsonMap.from(await api.post(
+        '/data/external-sync',
+        body: <String, Object?>{
+          'items': items.map((JsonMap row) => row.json).toList(growable: false),
+          'update_price': updatePrice,
+          'update_stock': updateStock,
+          'price_target': priceTarget,
+          'markup_percent': markupPercent,
+          'source': source,
+        },
+        tenantId: tenant(),
+        heavy: true,
+      )).json);
 
   /// 出参是 `{settings:{...}}` 单对象（服务端永远兜一份默认值回来，不会有 null）。
   Future<PrintSettings> printSettings() async =>

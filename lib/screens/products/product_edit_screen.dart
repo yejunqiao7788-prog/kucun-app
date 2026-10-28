@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/formatters.dart';
 import '../../core/l10n.dart';
 import '../../data/entities.dart';
 import '../../design/tokens.dart';
@@ -12,6 +13,7 @@ import '../../design/widgets/sheets.dart';
 import '../../design/widgets/state_views.dart';
 import '../../design/widgets/surfaces.dart';
 import '../../state/app_state.dart';
+import '../../state/value_loader.dart';
 
 /// 商品编辑器。
 ///
@@ -63,6 +65,12 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
   bool _uploading = false;
   bool _saving = false;
 
+  /// 成交行只在编辑已有商品时才有意义，新建态不构造这个加载器。
+  late final ValueLoader<List<ProductHistoryEntry>> _history =
+      ValueLoader<List<ProductHistoryEntry>>(
+    () => context.read<AppState>().repos.orders.productHistory(widget.product!.id, limit: 8),
+  );
+
   bool get _isNew => widget.product == null;
 
   static TextEditingController _decimal(double? value) =>
@@ -73,11 +81,19 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
     super.initState();
     _categoryId = widget.product?.categoryId;
     unawaited(_loadCategories());
+    if (!_isNew) {
+      _history.addListener(_repaint);
+      unawaited(_history.load());
+    }
     if (widget.focusQuantity) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _qtyFocus.requestFocus();
       });
     }
+  }
+
+  void _repaint() {
+    if (mounted) setState(() {});
   }
 
   Future<void> _loadCategories() async {
@@ -93,6 +109,10 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
 
   @override
   void dispose() {
+    if (!_isNew) {
+      _history.removeListener(_repaint);
+      _history.dispose();
+    }
     _qtyFocus.dispose();
     _name.dispose();
     _sku.dispose();
@@ -443,6 +463,7 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
                 ),
               ],
             ),
+            if (!_isNew) _historyGroup(l10n),
             const VGap(20),
             PrimaryButton(
               label: _saving ? l10n.commonSaving : l10n.actSave,
@@ -454,6 +475,51 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
             const VGap(12),
           ],
         ),
+      ),
+    );
+  }
+
+  /// 成交行：改价、补货前先看这支货实际怎么走的，省掉跳订单页再搜一遍。
+  Widget _historyGroup(L10n l10n) {
+    final List<ProductHistoryEntry> rows = _history.value ?? const <ProductHistoryEntry>[];
+    final TextStyle? small = Theme.of(context).textTheme.bodySmall;
+    return _group(
+      title: l10n.prodHistory,
+      accent: AppInk.orders,
+      note: (!_history.loading && _history.errorText == null && rows.isNotEmpty)
+          ? l10n.prodHistoryNote(rows.length)
+          : null,
+      children: <Widget>[
+        const VGap(4),
+        if (_history.loading)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 16),
+            child: Center(child: AppSpinner()),
+          )
+        else if (_history.errorText != null)
+          Text(_history.errorText!, style: small)
+        else if (rows.isEmpty)
+          Text(l10n.prodHistoryEmpty, style: small)
+        else
+          for (final ProductHistoryEntry row in rows) _historyRow(l10n, row),
+      ],
+    );
+  }
+
+  Widget _historyRow(L10n l10n, ProductHistoryEntry row) {
+    final bool inbound = row.type == OrderType.inbound;
+    final Color tint = inbound ? AppInk.finance : AppInk.products;
+    return TileRow(
+      icon: inbound ? Icons.south_west_rounded : Icons.north_east_rounded,
+      accent: AppInk.orders,
+      title: '${row.orderNumber} · '
+          '${row.customerName.isEmpty ? l10n.commonNone : row.customerName}',
+      // 单据类型写在副标题里：历史行没有订单 id，读不出方向就会把出库当入库。
+      subtitle:
+          '${inbound ? l10n.ordInbound : l10n.ordOutbound} · ${l10n.elapsed(row.orderDate)}',
+      trailing: Text(
+        Fmt.count(row.quantity),
+        style: TextStyle(fontSize: AppType.head, fontWeight: AppType.heavy, color: tint),
       ),
     );
   }

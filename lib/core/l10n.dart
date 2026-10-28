@@ -47,13 +47,13 @@ class L10n {
     final ({int value, RelUnit unit}) parts = Fmt.elapsed(moment);
     switch (parts.unit) {
       case RelUnit.now:
-        return raw('rel_now');
+        return relNow;
       case RelUnit.minute:
-        return fill('rel_minutes', <String, Object>{'n': parts.value});
+        return relMinutes(parts.value);
       case RelUnit.hour:
-        return fill('rel_hours', <String, Object>{'n': parts.value});
+        return relHours(parts.value);
       case RelUnit.day:
-        return fill('rel_days', <String, Object>{'n': parts.value});
+        return relDays(parts.value);
       case RelUnit.date:
         return Fmt.date(moment);
     }
@@ -105,6 +105,7 @@ class L10n {
   String get actConfirm => raw('act_confirm');
   String get actClear => raw('act_clear');
   String get actSelectAll => raw('act_select_all');
+  String get actPaste => raw('act_paste');
   String get actApply => raw('act_apply');
   String get actContinue => raw('act_continue');
   String get actSkip => raw('act_skip');
@@ -200,7 +201,27 @@ class L10n {
   String get prodModePercent => raw('prod_mode_percent');
   String get prodModeFixed => raw('prod_mode_fixed');
   String get prodImport => raw('prod_import');
+  String get prodImportEmpty => raw('prod_import_empty');
+  String get prodImportFailures => raw('prod_import_failures');
+  String get prodImportFixOnly => raw('prod_import_fix_only');
+  String get prodImportHint => raw('prod_import_hint');
   String get prodImportPreview => raw('prod_import_preview');
+  String prodImportReady(Object n) => fill('prod_import_ready', <String, Object>{'n': n});
+  String prodImportResult(Object ok, Object bad) =>
+      fill('prod_import_result', <String, Object>{'ok': ok, 'bad': bad});
+  String prodImportRunning(Object done, Object total) =>
+      fill('prod_import_running', <String, Object>{'done': done, 'total': total});
+  String prodImportSkipped(Object n) => fill('prod_import_skipped', <String, Object>{'n': n});
+  String get prodImportPickXlsx => raw('prod_import_pick_xlsx');
+  String get prodImportReading => raw('prod_import_reading');
+  String get prodImportTemplate => raw('prod_import_template');
+  String get prodImportTemplateStandard => raw('prod_import_template_standard');
+  String get prodImportTemplateSimple => raw('prod_import_template_simple');
+  String get prodImportTemplatesNote => raw('prod_import_templates_note');
+  String prodImportTemplateSaved(Object n) => fill('prod_import_template_saved', <String, Object>{'n': n});
+  String get prodImportXlsxEmpty => raw('prod_import_xlsx_empty');
+  String get prodImportXlsxColumns => raw('prod_import_xlsx_columns');
+  String get prodImportXlsxNone => raw('prod_import_xlsx_none');
   String get prodExport => raw('prod_export');
   String get prodSearchHint => raw('prod_search_hint');
   String get prodLowOnly => raw('prod_low_only');
@@ -320,6 +341,13 @@ class L10n {
   String get aiNotConfigured => raw('ai_not_configured');
   String get aiVisionOnly => raw('ai_vision_only');
   String get aiSttFailed => raw('ai_stt_failed');
+  String get aiRecord => raw('ai_record');
+  String aiRecording(Object n) => fill('ai_recording', <String, Object>{'n': n});
+  String get aiRecordCap => raw('ai_record_cap');
+  String get aiRecordCancel => raw('ai_record_cancel');
+  String get aiRecordDenied => raw('ai_record_denied');
+  String get aiTranscribing => raw('ai_transcribing');
+  String get aiRecordFailed => raw('ai_record_failed');
   String get setProfile => raw('set_profile');
   String get setMembers => raw('set_members');
   String get setInvitations => raw('set_invitations');
@@ -361,10 +389,55 @@ class L10n {
   String get setFeedbackHint => raw('set_feedback_hint');
   String get setApiKeysNote => raw('set_api_keys_note');
   String setVersion(Object v) => fill('set_version', <String, Object>{'v': v});
+  String get setExternal => raw('set_external');
+  String get setExternalNote => raw('set_external_note');
+
+  // ---- 外部商品源（YML / XML）----
+  String get extUrl => raw('ext_url');
+  String get extUrlPlaceholder => raw('ext_url_placeholder');
+  String get extParse => raw('ext_parse');
+  String get extParsing => raw('ext_parsing');
+  String get extShop => raw('ext_shop');
+  String get extTotal => raw('ext_total');
+  String get extWithImage => raw('ext_with_image');
+  String get extWithBox => raw('ext_with_box');
+  String get extCategories => raw('ext_categories');
+  String get extEmpty => raw('ext_empty');
+  String get extImportOptions => raw('ext_import_options');
+  String get extDownloadImages => raw('ext_download_images');
+  String get extSkipExisting => raw('ext_skip_existing');
+  String get extPriceAsCost => raw('ext_price_as_cost');
+  String get extMarkup => raw('ext_markup');
+  String get extMarkupHint => raw('ext_markup_hint');
+  String get extSyncOptions => raw('ext_sync_options');
+  String get extSyncPrice => raw('ext_sync_price');
+  String get extSyncStock => raw('ext_sync_stock');
+  String get extSyncNote => raw('ext_sync_note');
+  String extImport(Object n) => fill('ext_import', <String, Object>{'n': n});
+  String extImportConfirm(Object n) =>
+      fill('ext_import_confirm', <String, Object>{'n': n});
+  String get extSyncConfirm => raw('ext_sync_confirm');
+  String get extSync => raw('ext_sync');
+  String extSyncing(Object done, Object total) =>
+      fill('ext_syncing', <String, Object>{'done': done, 'total': total});
+  String extImportResult(Object ok, Object bad, Object img) =>
+      fill('ext_import_result', <String, Object>{'ok': ok, 'bad': bad, 'img': img});
+  String extSyncResult(Object updated, Object unchanged, Object skipped, Object failed) =>
+      fill('ext_sync_result', <String, Object>{
+        'updated': updated,
+        'unchanged': unchanged,
+        'skipped': skipped,
+        'failed': failed,
+      });
+  String extNewItems(Object n) => fill('ext_new_items', <String, Object>{'n': n});
+  String extImportNew(Object n) => fill('ext_import_new', <String, Object>{'n': n});
 
   // ---- 表单文案：商品 / 库存 / 订单 ----
   String get prodShootCamera => raw('prod_shoot_camera');
   String get prodShootAlbum => raw('prod_shoot_album');
+  String get prodHistory => raw('prod_history');
+  String prodHistoryNote(Object n) => fill('prod_history_note', <String, Object>{'n': n});
+  String get prodHistoryEmpty => raw('prod_history_empty');
   String get prodImagesMax => raw('prod_images_max');
   String get prodDescHint => raw('prod_desc_hint');
   String get prodNameRequired => raw('prod_name_required');
@@ -624,6 +697,8 @@ class L10n {
   String get mpDescEn => raw('mp_desc_en');
   String get mpDescHint => raw('mp_desc_hint');
   String get mpDescUk => raw('mp_desc_uk');
+  String get mpDocBrand => raw('mp_doc_brand');
+  String get mpDocConformity => raw('mp_doc_conformity');
   String get mpDocLicense => raw('mp_doc_license');
   String get mpDocOther => raw('mp_doc_other');
   String get mpDocQuality => raw('mp_doc_quality');
@@ -643,6 +718,10 @@ class L10n {
   String get mpListingTitle => raw('mp_listing_title');
   String get mpLockedEdit => raw('mp_locked_edit');
   String get mpMappingHint => raw('mp_mapping_hint');
+  String get mpMappingAdd => raw('mp_mapping_add');
+  String get mpMappingPickTenant => raw('mp_mapping_pick_tenant');
+  String get mpMappingPickMp => raw('mp_mapping_pick_mp');
+  String get mpMappingAllDone => raw('mp_mapping_all_done');
   String get mpMinQty => raw('mp_min_qty');
   String get mpMuted => raw('mp_muted');
   String get mpNeedsDoc => raw('mp_needs_doc');

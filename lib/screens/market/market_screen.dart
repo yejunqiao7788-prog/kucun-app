@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -801,6 +802,7 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
   late final ValueLoader<List<MpDocument>> _docs = ValueLoader<List<MpDocument>>(
     () => _app.repos.market.listingDocuments(widget.listingId),
   );
+  bool _uploading = false;
 
   @override
   void initState() {
@@ -861,7 +863,7 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
       builder: (BuildContext sheetContext) => Column(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          for (final String key in const <String>['license', 'quality', 'test_report', 'other'])
+          for (final String key in kDocTypes)
             TileRow(
               icon: Icons.description_outlined,
               title: _docTypeLabel(key, l10n),
@@ -873,12 +875,44 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
     );
     if (docType == null || !mounted) return;
 
-    setState(() {});
+    final ImageSource? source = await showDrawer<ImageSource>(
+      context,
+      title: _docTypeLabel(docType, l10n),
+      accent: AppInk.marketplace,
+      builder: (BuildContext sheetContext) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          TileRow(
+            icon: Icons.photo_camera_rounded,
+            title: l10n.prodShootCamera,
+            accent: AppInk.marketplace,
+            onTap: () => Navigator.of(sheetContext).pop(ImageSource.camera),
+          ),
+          TileRow(
+            icon: Icons.photo_library_rounded,
+            title: l10n.prodShootAlbum,
+            accent: AppInk.marketplace,
+            onTap: () => Navigator.of(sheetContext).pop(ImageSource.gallery),
+          ),
+        ],
+      ),
+    );
+    if (source == null || !mounted) return;
+
+    setState(() => _uploading = true);
     try {
+      final XFile? file = await ImagePicker().pickImage(
+        source: source,
+        maxWidth: 2400,
+        imageQuality: 85,
+      );
+      if (file == null) return;
+      final String name = file.name.isEmpty ? '$docType.jpg' : file.name;
       final String path = await _app.storage.uploadPrivateAsset(
         tenantId: _app.profile.tenantId,
-        bytes: Uint8List.fromList(const <int>[0x25, 0x50, 0x44, 0x46]),
-        fileName: '$docType.pdf',
+        bytes: await file.readAsBytes(),
+        fileName: name,
+        contentType: 'image/jpeg',
       );
       if (!mounted) return;
       await _app.guardWrite<Object?>(
@@ -886,7 +920,7 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
           listingId: widget.listingId,
           docType: docType,
           storagePath: path,
-          originalName: '$docType.pdf',
+          originalName: name,
         ),
       );
       if (!mounted) return;
@@ -895,6 +929,8 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
     } on Object catch (error) {
       if (!mounted) return;
       showToast(context, _app.describeError(error), danger: true);
+    } finally {
+      if (mounted) setState(() => _uploading = false);
     }
   }
 
@@ -1079,10 +1115,18 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
                         accent: AppInk.settings,
                         subtitle: data.categoryRequiresDocument ? l10n.mpNeedsDoc : null,
                         trailing: app.canWrite
-                            ? TextAction(label: l10n.actAdd, onPressed: _uploadDoc)
+                            ? TextAction(
+                                label: l10n.actAdd,
+                                onPressed: _uploading ? null : _uploadDoc,
+                              )
                             : null,
                       ),
-                      if (docs.isEmpty)
+                      if (_uploading)
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 12),
+                          child: AppSpinner(color: AppInk.marketplace),
+                        )
+                      else if (docs.isEmpty)
                         Text(
                           l10n.commonEmptyTitle,
                           style: Theme.of(context).textTheme.bodySmall,
@@ -1153,8 +1197,18 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
   static bool _agreedForSubmit(MpListing data) => data.termsVersion != null;
 }
 
+/// 线上集市只认这三种 `doc_type`（原项目上传控件里就这三个值），
+/// 自造的类型名服务端不一定收。
+const List<String> kDocTypes = <String>[
+  'business_license',
+  'brand_authorization',
+  'conformity_certificate',
+];
+
 String _docTypeLabel(String kind, L10n l10n) => switch (kind) {
-      'license' => l10n.mpDocLicense,
+      'business_license' || 'license' => l10n.mpDocLicense,
+      'brand_authorization' => l10n.mpDocBrand,
+      'conformity_certificate' => l10n.mpDocConformity,
       'quality' => l10n.mpDocQuality,
       'test_report' => l10n.mpDocTestReport,
       _ => l10n.mpDocOther,
@@ -2532,6 +2586,91 @@ class _StoreTabState extends State<_StoreTab> {
     }
   }
 
+  /// 映射只有「新建」这一支写操作：服务端没有解绑接口，改映射等于覆盖同一本店类目。
+  Future<void> _addMapping() async {
+    final L10n l10n = _app.l10n;
+    final List<String> mapped = (_mappings.value ?? const <JsonMap>[])
+        .map((JsonMap row) => row.asStringOr('tenant_category_id', ''))
+        .toList(growable: false);
+    final List<Category> tenantCategories;
+    final List<JsonMap> mpCategories;
+    try {
+      tenantCategories = await _app.repos.products.categories();
+      mpCategories = await _app.repos.market.categories();
+    } on Object catch (error) {
+      if (!mounted) return;
+      showToast(context, _app.describeError(error), danger: true);
+      return;
+    }
+    final List<Category> free =
+        tenantCategories.where((Category c) => !mapped.contains(c.id)).toList();
+    if (!mounted) return;
+    if (free.isEmpty) {
+      showToast(context, l10n.mpMappingAllDone);
+      return;
+    }
+    if (mpCategories.isEmpty) {
+      showToast(context, l10n.mpCategoryRequired, danger: true);
+      return;
+    }
+    final Category? tenant = await _pickSheet<Category>(
+      title: l10n.mpMappingPickTenant,
+      items: free,
+      labelOf: (Category c) => c.name,
+      detailOf: (Category c) => '${Fmt.count(c.productCount)} ${l10n.unitPiece}',
+    );
+    if (tenant == null || !mounted) return;
+    final JsonMap? mp = await _pickSheet<JsonMap>(
+      title: l10n.mpMappingPickMp,
+      items: mpCategories,
+      labelOf: (JsonMap c) => c.asStringOr(
+          'name_zh', c.asStringOr('name_en', c.asStringOr('slug', '—'))),
+      detailOf: (JsonMap c) => c.asStringOr('slug', ''),
+    );
+    final String mpId = mp?.asStringOr('id', '') ?? '';
+    if (mpId.isEmpty || !_app.canWrite) return;
+    try {
+      await _app.guardWrite<void>(
+        () => _app.repos.market.saveMapping(tenant.id, mpId),
+      );
+      if (!mounted) return;
+      showToast(context, l10n.commonSaved);
+      await _mappings.refresh();
+    } on Object catch (error) {
+      if (!mounted) return;
+      showToast(context, _app.describeError(error), danger: true);
+    }
+  }
+
+  Future<T?> _pickSheet<T>({
+    required String title,
+    required List<T> items,
+    required String Function(T item) labelOf,
+    required String Function(T item) detailOf,
+  }) {
+    return showDrawer<T>(
+      context,
+      title: title,
+      accent: AppInk.orders,
+      maxHeightFactor: 0.62,
+      builder: (BuildContext sheetContext) => SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            for (final T item in items)
+              TileRow(
+                icon: Icons.label_outline_rounded,
+                accent: AppInk.orders,
+                title: labelOf(item),
+                subtitle: detailOf(item).isEmpty ? null : detailOf(item),
+                onTap: () => Navigator.of(sheetContext).pop(item),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _bindTelegram() async {
     final L10n l10n = _app.l10n;
     final TextEditingController token = TextEditingController();
@@ -2822,6 +2961,13 @@ class _StoreTabState extends State<_StoreTab> {
                     title: l10n.mpCategoryMapping,
                     accent: AppInk.orders,
                     subtitle: l10n.mpMappingHint,
+                    trailing: RoundIconButton(
+                      icon: Icons.add_rounded,
+                      size: 30,
+                      color: AppInk.orders,
+                      tooltip: l10n.mpMappingAdd,
+                      onPressed: app.canWrite ? _addMapping : null,
+                    ),
                   ),
                   ...(_mappings.value ?? const <JsonMap>[]).map(
                     (JsonMap row) => Padding(

@@ -18,6 +18,7 @@ import '../../state/app_state.dart';
 import '../../state/list_controller.dart';
 import '../inventory/inventory_panel.dart';
 import 'product_edit_screen.dart';
+import 'product_import_screen.dart';
 
 /// 「商品」页 = 商品清单 + 库存视图两段。
 ///
@@ -78,6 +79,21 @@ class _ProductsScreenState extends State<ProductsScreen> {
                     ),
                   ),
                 ),
+                RoundIconButton(
+                  icon: Icons.upload_rounded,
+                  color: AppInk.products,
+                  tooltip: l10n.prodImport,
+                  onPressed: app.canWrite
+                      ? () async {
+                          final bool? done = await pushSheet<bool>(
+                            context,
+                            child: ProductImportScreen(canImport: app.canWrite),
+                          );
+                          if (done == true && mounted) _notifyProductsChanged();
+                        }
+                      : null,
+                ),
+                const HGap(8),
                 RoundIconButton(
                   icon: Icons.add_rounded,
                   color: AppInk.products,

@@ -24,6 +24,7 @@ import '../../shell/module_registry.dart';
 import '../../state/app_state.dart';
 import '../../state/value_loader.dart';
 import '../me/business_numbers_card.dart';
+import 'external_data_screen.dart';
 import 'settings_lists.dart';
 
 /// 「我的」：账号 + 经营数字 + 偏好 + 模块入口 + 租户管理。
@@ -626,6 +627,14 @@ class _DataCard extends StatelessWidget {
           title: l10n.setMemos,
           trailing: const Icon(Icons.chevron_right_rounded, color: AppInk.textTertiary),
           onTap: () => pushSheet<void>(context, child: const MemosScreen()),
+        ),
+        TileRow(
+          icon: Icons.rss_feed_rounded,
+          accent: AppInk.inventory,
+          title: l10n.setExternal,
+          subtitle: l10n.setExternalNote,
+          trailing: const Icon(Icons.chevron_right_rounded, color: AppInk.textTertiary),
+          onTap: () => pushSheet<void>(context, child: const ExternalDataScreen()),
         ),
         TileRow(
           icon: Icons.download_rounded,

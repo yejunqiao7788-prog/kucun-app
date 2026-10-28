@@ -210,6 +210,20 @@ class OrderItem extends JsonMap {
       };
 }
 
+/// `/orders/product-history` 给的是**按商品行展开**的流水，不是 Order：
+/// 服务端只回单号、单据类型、日期、这一支的数量、客户与备注，
+/// 没有订单 id 也带不出金额，所以这里不能复用 [Order]（会读出一堆 0 与空 id）。
+class ProductHistoryEntry extends JsonMap {
+  const ProductHistoryEntry(super.json);
+
+  String get orderNumber => asStringOr('order_number', '—');
+  OrderType get type => OrderType.parse(asString('type'));
+  DateTime? get orderDate => asDate('order_date');
+  int get quantity => asIntOr('quantity', 0);
+  String get customerName => asStringOr('customer_name', '');
+  String? get notes => asString('notes');
+}
+
 /// `POST /invitations/lookup` → `data.invitation`。
 ///
 /// 注册前预览：服务端只给团队名、入职角色与有效期，不给成员名单。
@@ -595,6 +609,47 @@ class WalletTopupBoard extends JsonMap {
   List<JsonMap> get tiers => asList('tiers');
   List<String> get tierKeys =>
       tiers.map((JsonMap row) => row.asStringOr('tier', '')).where((String k) => k.isNotEmpty).toList();
+}
+
+/// 批量导入的回包：服务端给计数加失败样例，两个键名在不同入口里不一致，都得吃。
+class ImportOutcome extends JsonMap {
+  const ImportOutcome(super.json);
+
+  int get successCount => asIntOr('success_count', 0);
+  int get failedCount => asIntOr('failed_count', 0);
+
+  /// 只有外部数据源导入才会带：图片下载失败不影响商品写入。
+  int get imageFailedCount => asIntOr('image_failed_count', 0);
+
+  List<JsonMap> get failures {
+    final List<JsonMap> primary = asList('failures');
+    return primary.isEmpty ? asList('failed_examples') : primary;
+  }
+}
+
+/// `/data/external-preview` 把外部 YML / XML 商品源解析成整店统计加待写行，
+/// `items` 原样透传给导入与同步，客户端不参与字段拼装。
+class ExternalPreview extends JsonMap {
+  const ExternalPreview(super.json);
+
+  String get shopName => asStringOr('shop_name', '');
+  int get total => asIntOr('total', 0);
+  int get withImageCount => asIntOr('with_image_count', 0);
+  int get withBoxCount => asIntOr('with_box_count', 0);
+  int get categoriesCount => asIntOr('categories_count', 0);
+  List<JsonMap> get items => asList('items');
+}
+
+/// `/data/external-sync`：只动已有商品，认不出的行回在 `new_items` 里等导入。
+class ExternalSyncOutcome extends JsonMap {
+  const ExternalSyncOutcome(super.json);
+
+  int get updatedCount => asIntOr('updated_count', 0);
+  int get unchangedCount => asIntOr('unchanged_count', 0);
+  int get skippedCount => asIntOr('skipped_count', 0);
+  int get failedCount => asIntOr('failed_count', 0);
+  List<JsonMap> get failures => asList('failed_examples');
+  List<JsonMap> get newItems => asList('new_items');
 }
 
 /// 保留策略的报告（预览与执行同形）：条数、两档窗口、两枚 cutoff，外加样本。
