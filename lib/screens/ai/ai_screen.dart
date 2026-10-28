@@ -686,9 +686,7 @@ class _AiScreenState extends State<AiScreen> {
                   .take(15)
                   .map((OperationLog log) => KeyValueRow(
                         label: Fmt.dateTime(log.createdAt),
-                        value: log.actor.isEmpty
-                            ? '${log.action} · ${log.detail}'.trim()
-                            : '${log.actor} · ${log.action}',
+                        value: log.summary,
                       ))
                   .toList(growable: false),
             ),

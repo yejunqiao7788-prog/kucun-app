@@ -256,9 +256,52 @@ class OperationLog extends JsonMap {
   const OperationLog(super.json);
 
   String get id => asStringOr('id', '');
-  String get action => asStringOr('action', '');
-  String get detail => asStringOr('detail', asStringOr('message', ''));
-  String get actor => asStringOr('username', asStringOr('actor', asStringOr('created_by', '')));
+
+  /// 日志出参历史上见到两套键名：业务侧的 `action`/`detail`/`username`，和网页端类型里的
+  /// `operation_type`/`details{…}`/`user_name`。只认一套时另一套会整行读成空白，键名在这里取并集。
+  String get action => asStringOr('action', asStringOr('operation_type', ''));
+
+  String get actor => asStringOr(
+        'username',
+        asStringOr('user_name', asStringOr('actor', asStringOr('created_by', ''))),
+      );
+
+  String get tableName => asStringOr('table_name', '');
+
+  JsonMap get _details => asMap('details');
+
+  String get productName => asStringOr('name', _details.asStringOr('name', ''));
+
+  String get productSku => asStringOr('sku', _details.asStringOr('sku', ''));
+
+  String get detail {
+    final String direct = asStringOr('detail', asStringOr('message', ''));
+    return direct.isNotEmpty ? direct : _changeSummary;
+  }
+
+  /// `quantity: 12 → 8 · location: A → B`，网页端是逐字段小块，这里收成一行文本。
+  String get _changeSummary {
+    final Map<String, Object?> changes = _details.asMap('changes').json;
+    return changes.entries
+        .map((MapEntry<String, Object?> entry) {
+          final JsonMap pair = JsonMap.from(entry.value);
+          return '${entry.key}: ${pair.raw('from') ?? '—'} → ${pair.raw('to') ?? '—'}';
+        })
+        .join(' · ');
+  }
+
+  /// 一行可读摘要：谁 · 做了什么 · 哪件货（带变更）。缺哪段跳哪段，不留空行。
+  String get summary {
+    final String target = productName.isNotEmpty ? productName : productSku;
+    final List<String> parts = <String>[
+      if (actor.isNotEmpty) actor,
+      if (action.isNotEmpty) action,
+      if (target.isNotEmpty) target,
+      if (detail.isNotEmpty) detail,
+    ];
+    return parts.isEmpty ? '—' : parts.join(' · ');
+  }
+
   DateTime? get createdAt => asDate('created_at');
 }
 

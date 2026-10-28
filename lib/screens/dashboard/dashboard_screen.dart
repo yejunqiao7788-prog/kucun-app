@@ -138,9 +138,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             ),
                             Expanded(
                               child: Text(
-                                log.actor.isEmpty
-                                    ? '${log.action} · ${log.detail}'.trim()
-                                    : '${log.actor} · ${log.action}',
+                                log.summary,
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
                                 style: Theme.of(context).textTheme.bodyMedium,
