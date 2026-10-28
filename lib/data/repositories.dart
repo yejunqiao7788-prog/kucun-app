@@ -1,6 +1,7 @@
 import 'dart:convert' show base64Encode;
 
 import '../core/api_client.dart';
+import '../core/get_cache.dart';
 import '../data/entities.dart';
 
 /// 仓储层：一个端点一个方法，只做路径拼装与出参定型，不含业务判断。
@@ -40,6 +41,18 @@ Future<Object?> _get(
           cache: cache,
         )
         .then((ApiResponse<Object?> r) => r.data);
+
+/// 60 秒内同一支低频字典接口只打一次（分类、客户、价目表、打印设置、集市配置）。
+///
+/// 只包住"整屏就一份、改动只来自写接口"的读：列表分页、轮询回执、明细都不走这里，
+/// 那些接口的键会随参数变，缓存住了等于把筛选条件冻在第一次。写成功由 ApiClient 整表作废，
+/// 下拉刷新由 ValueLoader 的 cacheKey 精确作废那一条。
+Future<T> _cached<T>(
+  TenantProvider tenant,
+  String name,
+  Future<T> Function() load,
+) =>
+    GetCache.instance.remember<T>(GetCache.keyFor(tenant(), name), load);
 
 class DashboardRepo {
   const DashboardRepo(this.api, this.tenant);
@@ -275,13 +288,17 @@ class ProductRepo {
         tenantId: tenant(),
       );
 
-  Future<List<Category>> categories() async {
-    final Object? data =
-        await _get(api, '/categories', tenant: tenant, cache: true);
-    return JsonMap.rawListOf(data, <String>['categories', 'data'])
-        .map(Category.new)
-        .toList();
-  }
+  Future<List<Category>> categories() => _cached<List<Category>>(
+        tenant,
+        'categories',
+        () async {
+          final Object? data =
+              await _get(api, '/categories', tenant: tenant, cache: true);
+          return JsonMap.rawListOf(data, <String>['categories', 'data'])
+              .map(Category.new)
+              .toList();
+        },
+      );
 
   Future<Object?> createCategory(String name) =>
       api.post('/categories', body: <String, Object?>{'name': name}, tenantId: tenant());
@@ -517,21 +534,35 @@ class MarketRepo {
   final ApiClient api;
   final TenantProvider tenant;
 
-  Future<JsonMap> config() async =>
-      JsonMap.from(await _get(api, '/marketplace/config', tenant: tenant));
+  Future<JsonMap> config() => _cached<JsonMap>(
+        tenant,
+        'market_config',
+        () async =>
+            JsonMap.from(await _get(api, '/marketplace/config', tenant: tenant)),
+      );
 
-  Future<List<JsonMap>> categories() async {
-    final Object? data = await _get(api, '/marketplace/categories', tenant: tenant);
-    final JsonMap map = JsonMap.from(data);
-    final List<JsonMap> flat = JsonMap.listOf(map.raw('flat'), <String>[]);
-    return flat.isNotEmpty ? flat : JsonMap.listOf(map.raw('categories'), <String>[]);
-  }
+  Future<List<JsonMap>> categories() => _cached<List<JsonMap>>(
+        tenant,
+        'market_categories',
+        () async {
+          final Object? data =
+              await _get(api, '/marketplace/categories', tenant: tenant);
+          final JsonMap map = JsonMap.from(data);
+          final List<JsonMap> flat =
+              JsonMap.listOf(map.raw('flat'), <String>[]);
+          return flat.isNotEmpty ? flat : JsonMap.listOf(map.raw('categories'), <String>[]);
+        },
+      );
 
   Future<JsonMap> terms() async =>
       JsonMap.from(await _get(api, '/marketplace/terms', tenant: tenant));
 
-  Future<MpSeller> seller() async =>
-      MpSeller(JsonMap.from(await _get(api, '/marketplace/seller', tenant: tenant)).json);
+  Future<MpSeller> seller() => _cached<MpSeller>(
+        tenant,
+        'market_seller',
+        () async => MpSeller(
+            JsonMap.from(await _get(api, '/marketplace/seller', tenant: tenant)).json),
+      );
 
   /// 改店招不动 slug（公开地址是冻结的）。服务端只认 `name` 这一枚键。
   Future<Object?> renameSeller(String displayName) => api.patch(
@@ -986,10 +1017,17 @@ class SettingsRepo {
   Future<Object?> revokeInvitation(String id) =>
       api.delete('/invitations/$id', tenantId: tenant());
 
-  Future<List<Customer>> customers() async {
-    final Object? data = await _get(api, '/customers', tenant: tenant, cache: true);
-    return JsonMap.rawListOf(data, <String>['customers', 'data']).map(Customer.new).toList();
-  }
+  Future<List<Customer>> customers() => _cached<List<Customer>>(
+        tenant,
+        'customers',
+        () async {
+          final Object? data =
+              await _get(api, '/customers', tenant: tenant, cache: true);
+          return JsonMap.rawListOf(data, <String>['customers', 'data'])
+              .map(Customer.new)
+              .toList();
+        },
+      );
 
   Future<Object?> createCustomer(Map<String, Object?> payload) =>
       api.post('/customers', body: payload, tenantId: tenant());
@@ -1052,8 +1090,12 @@ class SettingsRepo {
         tenantId: tenant(),
       );
 
-  Future<PlanBoard> plans() async =>
-      PlanBoard(JsonMap.from(await _get(api, '/payments/plans', tenant: tenant)).json);
+  Future<PlanBoard> plans() => _cached<PlanBoard>(
+        tenant,
+        'plans',
+        () async =>
+            PlanBoard(JsonMap.from(await _get(api, '/payments/plans', tenant: tenant)).json),
+      );
 
   Future<List<JsonMap>> payments() async => JsonMap.listOf(
         await _get(api, '/payments', tenant: tenant),
@@ -1069,11 +1111,19 @@ class SettingsRepo {
         tenant: tenant,
       )).json);
 
-  Future<WalletAccount> wallet() async =>
-      WalletAccount(JsonMap.from(await _get(api, '/wallet/account', tenant: tenant)).json);
+  Future<WalletAccount> wallet() => _cached<WalletAccount>(
+        tenant,
+        'wallet',
+        () async => WalletAccount(
+            JsonMap.from(await _get(api, '/wallet/account', tenant: tenant)).json),
+      );
 
-  Future<WalletTopupBoard> walletTopupPlans() async => WalletTopupBoard(
-      JsonMap.from(await _get(api, '/wallet/plans', tenant: tenant)).json);
+  Future<WalletTopupBoard> walletTopupPlans() => _cached<WalletTopupBoard>(
+        tenant,
+        'wallet_topup_plans',
+        () async => WalletTopupBoard(
+            JsonMap.from(await _get(api, '/wallet/plans', tenant: tenant)).json),
+      );
 
   /// 订阅开单：`plan_type` 三档，`channel` 缺省即用业主设的默认通道。
   /// 金额一律来自服务端价目表，客户端传 `amount`/`success_url` 会被忽略。
@@ -1150,8 +1200,14 @@ class SettingsRepo {
       )).json);
 
   /// 出参是 `{settings:{...}}` 单对象（服务端永远兜一份默认值回来，不会有 null）。
-  Future<PrintSettings> printSettings() async =>
-      PrintSettings(JsonMap.from(await _get(api, '/print-settings', tenant: tenant)).asMap('settings').json);
+  Future<PrintSettings> printSettings() => _cached<PrintSettings>(
+        tenant,
+        'print_settings',
+        () async => PrintSettings(JsonMap.from(
+                await _get(api, '/print-settings', tenant: tenant))
+            .asMap('settings')
+            .json),
+      );
 
   Future<PrintSettings> savePrintSettings(PrintSettings values) async => PrintSettings(
       JsonMap.from(await api.post(

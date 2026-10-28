@@ -10,6 +10,7 @@ import '../../core/access.dart';
 import '../../core/api_client.dart';
 import '../../core/env.dart';
 import '../../core/formatters.dart';
+import '../../core/get_cache.dart';
 import '../../core/l10n.dart';
 import '../../core/l10n_table.dart';
 import '../../data/entities.dart';
@@ -50,8 +51,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   });
 
   /// 价目表同理：这张卡在列表里靠上，往下滑就随 State 一起销毁，自己取数等于滑回来先铺骨架屏。
-  late final ValueLoader<PlanBoard> _plans =
-      ValueLoader<PlanBoard>(() => _app.repos.settings.plans());
+  late final ValueLoader<PlanBoard> _plans = ValueLoader<PlanBoard>(
+    () => _app.repos.settings.plans(),
+    cacheKey: GetCache.keyFor(_app.profile.tenantId, 'plans'),
+  );
 
   /// 打码开关也归页面：滑走再滑回来不该偷偷重新遮上。
   bool _revealed = false;

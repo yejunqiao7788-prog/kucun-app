@@ -1,12 +1,17 @@
 import 'package:flutter/foundation.dart';
 
 import '../core/api_exception.dart';
+import '../core/get_cache.dart';
 
 /// 单对象加载器（工作台汇总、财务概览、AI 配置这类一屏一份数据的接口）。
+///
+/// [cacheKey] 指向 `GetCache` 里那条 60 秒记忆（形状和仓储层 `_cached` 用的同一个键）。
+/// 首次进屏照常吃缓存、秒显；下拉刷新必须绕过去，所以 `refresh()` 先把这条作废。
 class ValueLoader<T> extends ChangeNotifier {
-  ValueLoader(this._load);
+  ValueLoader(this._load, {this.cacheKey});
 
   final Future<T> Function() _load;
+  final String? cacheKey;
 
   T? value;
   String? errorText;
@@ -39,7 +44,11 @@ class ValueLoader<T> extends ChangeNotifier {
     }
   }
 
-  Future<void> refresh() => load();
+  Future<void> refresh() async {
+    final String? key = cacheKey;
+    if (key != null) GetCache.instance.drop(key);
+    await load();
+  }
 
   static String describe(Object error) =>
       error is ApiException ? error.display : '$error';

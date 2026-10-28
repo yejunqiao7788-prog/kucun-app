@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/env.dart';
 import '../../core/formatters.dart';
+import '../../core/get_cache.dart';
 import '../../core/l10n.dart';
 import '../../data/entities.dart';
 import '../../design/tokens.dart';
@@ -43,8 +44,10 @@ class _MarketScreenState extends State<MarketScreen> {
   /// 服务端最慢的接口因此总被前面几支挤掉。签位首次被打开才真正挂载。
   final Set<int> _visited = <int>{0};
 
-  late final ValueLoader<JsonMap> _config =
-      ValueLoader<JsonMap>(() => _app.repos.market.config());
+  late final ValueLoader<JsonMap> _config = ValueLoader<JsonMap>(
+    () => _app.repos.market.config(),
+    cacheKey: GetCache.keyFor(_app.profile.tenantId, 'market_config'),
+  );
 
   static const List<int> _tabKeys = <int>[0, 1, 2, 3, 4, 5];
 
@@ -2568,8 +2571,10 @@ class _StoreTab extends StatefulWidget {
 
 class _StoreTabState extends State<_StoreTab> {
   late final AppState _app = context.read<AppState>();
-  late final ValueLoader<MpSeller> _seller =
-      ValueLoader<MpSeller>(() => _app.repos.market.seller());
+  late final ValueLoader<MpSeller> _seller = ValueLoader<MpSeller>(
+    () => _app.repos.market.seller(),
+    cacheKey: GetCache.keyFor(_app.profile.tenantId, 'market_seller'),
+  );
   late final ValueLoader<TelegramBinding> _telegram =
       ValueLoader<TelegramBinding>(() => _app.repos.market.telegram());
   late final ValueLoader<List<JsonMap>> _mappings =

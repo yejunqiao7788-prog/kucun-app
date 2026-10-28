@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 
 import 'api_exception.dart';
 import 'env.dart';
+import 'get_cache.dart';
 import 'offline_cache.dart';
 import 'session.dart';
 
@@ -180,6 +181,9 @@ class ApiClient {
         anonymous: anonymous,
       );
       online.value = true;
+      // 写成功就把 GET 记忆整表作废：低频字典接口（分类、客户、价目表）改完就会被再读一次，
+      // 留着旧值等于让界面显示改之前的数。粗是粗了点，但一次多余 GET 换掉一整类脏读。
+      GetCache.instance.dropAll();
       return data;
     } on ApiException catch (error) {
       if (error.isNetworkFailure) online.value = false;

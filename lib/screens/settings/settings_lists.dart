@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/access.dart';
 import '../../core/formatters.dart';
+import '../../core/get_cache.dart';
 import '../../core/l10n.dart';
 import '../../data/entities.dart';
 import '../../design/tokens.dart';
@@ -525,8 +526,10 @@ class CategoriesScreen extends StatefulWidget {
 
 class _CategoriesScreenState extends State<CategoriesScreen> {
   late final AppState _app = context.read<AppState>();
-  late final ValueLoader<List<Category>> _rows =
-      ValueLoader<List<Category>>(() => _app.repos.products.categories());
+  late final ValueLoader<List<Category>> _rows = ValueLoader<List<Category>>(
+    () => _app.repos.products.categories(),
+    cacheKey: GetCache.keyFor(_app.profile.tenantId, 'categories'),
+  );
 
   @override
   void initState() {
@@ -713,8 +716,10 @@ class CustomersScreen extends StatefulWidget {
 
 class _CustomersScreenState extends State<CustomersScreen> {
   late final AppState _app = context.read<AppState>();
-  late final ValueLoader<List<Customer>> _rows =
-      ValueLoader<List<Customer>>(() => _app.repos.settings.customers());
+  late final ValueLoader<List<Customer>> _rows = ValueLoader<List<Customer>>(
+    () => _app.repos.settings.customers(),
+    cacheKey: GetCache.keyFor(_app.profile.tenantId, 'customers'),
+  );
   final TextEditingController _keyword = TextEditingController();
   String _query = '';
 
@@ -1332,7 +1337,10 @@ class PrintSettingsScreen extends StatefulWidget {
 class _PrintSettingsScreenState extends State<PrintSettingsScreen> {
   late final AppState _app = context.read<AppState>();
   late final ValueLoader<PrintSettings> _loader =
-      ValueLoader<PrintSettings>(() => _app.repos.settings.printSettings());
+      ValueLoader<PrintSettings>(
+          () => _app.repos.settings.printSettings(),
+          cacheKey:
+              GetCache.keyFor(_app.profile.tenantId, 'print_settings'));
 
   final TextEditingController _company = TextEditingController();
   final TextEditingController _contact = TextEditingController();

@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api_client.dart';
 import '../../core/formatters.dart';
+import '../../core/get_cache.dart';
 import '../../core/l10n.dart';
 import '../../data/entities.dart';
 import '../../design/tokens.dart';
@@ -934,12 +935,19 @@ class _WalletTab extends StatefulWidget {
 
 class _WalletTabState extends State<_WalletTab> {
   late final AppState _app = context.read<AppState>();
-  late final ValueLoader<WalletAccount> _wallet =
-      ValueLoader<WalletAccount>(() => _app.repos.settings.wallet());
+  late final ValueLoader<WalletAccount> _wallet = ValueLoader<WalletAccount>(
+    () => _app.repos.settings.wallet(),
+    cacheKey: GetCache.keyFor(_app.profile.tenantId, 'wallet'),
+  );
   late final ValueLoader<WalletTopupBoard> _topup =
-      ValueLoader<WalletTopupBoard>(() => _app.repos.settings.walletTopupPlans());
-  late final ValueLoader<PlanBoard> _plans =
-      ValueLoader<PlanBoard>(() => _app.repos.settings.plans());
+      ValueLoader<WalletTopupBoard>(
+          () => _app.repos.settings.walletTopupPlans(),
+          cacheKey:
+              GetCache.keyFor(_app.profile.tenantId, 'wallet_topup_plans'));
+  late final ValueLoader<PlanBoard> _plans = ValueLoader<PlanBoard>(
+    () => _app.repos.settings.plans(),
+    cacheKey: GetCache.keyFor(_app.profile.tenantId, 'plans'),
+  );
   late final ValueLoader<List<JsonMap>> _history = ValueLoader<List<JsonMap>>(
     () async => _app.repos.settings.payments(),
   );

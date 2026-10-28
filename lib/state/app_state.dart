@@ -10,6 +10,7 @@ import '../core/api_client.dart';
 import '../core/api_exception.dart';
 import '../core/env.dart';
 import '../core/formatters.dart';
+import '../core/get_cache.dart';
 import '../core/l10n.dart';
 import '../core/offline_cache.dart';
 import '../core/session.dart';
@@ -91,6 +92,8 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     if (!signedIn) {
       profile = UserProfile.none;
       renewalPending = false;
+      // 进程内 GET 记忆里留着的是这个账号见过的租户数据，掉线就得整表清掉。
+      GetCache.instance.dropAll();
       unawaited(OfflineCache.instance.dropAll());
     }
     notifyListeners();
@@ -115,6 +118,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
 
   Future<void> signOut() async {
     await session.signOut();
+    GetCache.instance.dropAll();
     await OfflineCache.instance.dropAll();
     profile = UserProfile.none;
     signedIn = false;
