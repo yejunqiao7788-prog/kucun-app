@@ -1452,6 +1452,15 @@ enum MatchKind {
   bool get isSkuBased => index <= MatchKind.skuContains.index;
 }
 
+/// 识别回执里的库位行（`product` 与 `candidates[]` 同一个形状）：价格写作 `unit_price`、
+/// 库存写作 `stock`。归一是必须的，不是美化 —— 直接读 `price` 永远是 0，
+/// 拍照识别出来的行会以 ¥0 进单（旧实现正是这样）。
+Product _visionProduct(JsonMap row) => Product(<String, Object?>{
+      ...row.json,
+      'price': row.asDoubleOr('unit_price', row.asDoubleOr('price', 0)),
+      'quantity': row.asIntOr('stock', row.asIntOr('quantity', 0)),
+    });
+
 class VisionCandidate extends JsonMap {
   const VisionCandidate(super.json);
 
@@ -1459,12 +1468,7 @@ class VisionCandidate extends JsonMap {
   String get sku => asStringOr('sku', '');
   String get name => asStringOr('name', '');
 
-  /// 候选行把价格写成 `unit_price`、库存写成 `stock`，这里归一成商品视图。
-  Product get product => Product(<String, Object?>{
-        ...json,
-        'price': asDoubleOr('unit_price', asDoubleOr('price', 0)),
-        'quantity': asIntOr('stock', asIntOr('quantity', 0)),
-      });
+  Product get product => _visionProduct(this);
 
   double get score => asDoubleOr('score', 0);
   MatchKind get matchKind => MatchKind.parse(asString('match_kind'));
@@ -1474,32 +1478,51 @@ class VisionCandidate extends JsonMap {
 class VisionLine extends JsonMap {
   const VisionLine(super.json);
 
-  int get index => asIntOr('index', 0);
   bool get matched => asBool('matched');
+
+  /// 同码写法变体或在不同柜位：服务端刻意不猜 top-1，`product` 留空，必须由卖家点选。
   bool get ambiguous => asBool('ambiguous');
-  int get qty => asIntOr('qty', 0);
-  MatchKind get matchKind => MatchKind.parse(asString('match_kind'));
+
+  /// 模型对这一行读数自己的把握，服务端夹在 0–1、非数时兜 0.5。只用来排序和显示，
+  /// 没有任何"低于多少就丢弃"的阈值——网页端也没有，丢弃识别结果比标个低置信更糟。
+  double get confidence => (asDoubleOr('confidence', 0.5)).clamp(0.0, 1.0);
+
   Product? get product =>
-      raw('product') == null ? null : Product(asMap('product').json);
+      raw('product') == null ? null : _visionProduct(asMap('product'));
   List<VisionCandidate> get candidates =>
       asRawList('candidates').map(VisionCandidate.new).toList(growable: false);
   int get groupSize => asIntOr('group_size', candidates.length);
+
+  /// 候选被服务端截断（同码 55 行只列 8 行），界面要另给一句提示，别让人以为这就是全部。
   bool get truncated => asBool('truncated');
 
-  /// 识别不到商品时服务端仍回 `hint`（sku/name/qty 的原始猜测），供人工对照。
   JsonMap get hint => asMap('hint');
-  String get hintLabel {
-    final JsonMap value = hint;
-    final List<String> parts = <String>[
-      if (value.asStringOr('sku_hint', '').isNotEmpty) value.asStringOr('sku_hint', ''),
-      if (value.asStringOr('name_hint', '').isNotEmpty) value.asStringOr('name_hint', ''),
-      if (value.asIntOr('qty', 0) > 0) 'x${value.asIntOr('qty', 0)}',
-    ];
-    return parts.join(' · ');
-  }
 
-  /// 歧义行必须由人从候选里选，服务端刻意不做 top-1 猜测。
-  bool get needsManualPick => matched && ambiguous && product == null;
+  /// 数量在 `hint.qty` 里：服务端没有顶层 `qty`，读错就等于每行都按 1 加进单。
+  int get qty => hint.asIntOr('qty', 0);
+  String get skuHint => hint.asStringOr('sku_hint', '');
+  String get nameHint => hint.asStringOr('name_hint', '');
+  String get categoryHint => hint.asStringOr('category_hint', '');
+  String get note => hint.asStringOr('note', '');
+
+  /// 「模型看到」那一行：码优先，没有码才退到名，都没有就一个破折号。
+  String get hintWas =>
+      skuHint.isNotEmpty ? skuHint : (nameHint.isNotEmpty ? nameHint : '—');
+
+  Product? get resolvedProduct => matched ? product : null;
+}
+
+/// `POST /orders/vision-draft` 的整包回执。
+class VisionDraft extends JsonMap {
+  const VisionDraft(super.json);
+
+  List<VisionLine> get items =>
+      asRawList('items').map(VisionLine.new).toList(growable: false);
+
+  /// 模型猜的客户名。只显示、不自动落到单上：认错了客户比认错了 SKU 更难发现。
+  String get customerHint => asStringOr('customer_hint', '');
+
+  /// `type_hint`（进/出库方向）界面刻意不读：方向在开单页就定死了，网页端同样把这支当死载荷。
 }
 
 /// 列表分页响应：行在 `data`，`page` 必须采用服务端回显值（越界会回落第 1 页）。

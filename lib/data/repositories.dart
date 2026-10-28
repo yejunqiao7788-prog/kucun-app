@@ -436,17 +436,23 @@ class OrderRepo {
         .toList();
   }
 
-  Future<List<VisionLine>> visionDraft({
+  /// 拍照录单：`image` 必须是 `data:image/...` 的 data URL（服务端 4 MB 上限），
+  /// `hint` 是给模型的补充说明（≤200 字），卖家写下"这张是给 ABC 商贸的出货单"就靠它进模型。
+  /// 服务端按人限流 8 次/分钟，超了回 429。
+  Future<VisionDraft> visionDraft({
     required String dataUrl,
     String? hint,
   }) async {
     final Object? data = await api.post(
       '/orders/vision-draft',
-      body: <String, Object?>{'image': dataUrl, 'hint': hint},
+      body: <String, Object?>{
+        'image': dataUrl,
+        if (hint != null && hint.trim().isNotEmpty) 'hint': hint.trim(),
+      },
       tenantId: tenant(),
       heavy: true,
     );
-    return JsonMap.rawListOf(data, <String>['items']).map(VisionLine.new).toList();
+    return VisionDraft(JsonMap.from(data).json);
   }
 
   Future<List<PickingMark>> pickingMarks({String? orderId}) async {

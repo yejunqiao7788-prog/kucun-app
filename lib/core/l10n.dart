@@ -271,9 +271,46 @@ class L10n {
   String get ordChange => raw('ord_change');
   String get ordMethod => raw('ord_method');
   String get ordVision => raw('ord_vision');
-  String get ordVisionHint => raw('ord_vision_hint');
-  String ordVisionAmbiguous(Object n) => fill('ord_vision_ambiguous', <String, Object>{'n': n});
-  String get ordVisionPick => raw('ord_vision_pick');
+
+  // 拍照录单复核页：一屏一份识别结果，键名对齐网页端 orders.vision_*。
+  String get visTitle => raw('vis_title');
+  String get visSubtitle => raw('vis_subtitle');
+  String get visHintLabel => raw('vis_hint_label');
+  String get visHintPlaceholder => raw('vis_hint_placeholder');
+  String get visRun => raw('vis_run');
+  String get visWorking => raw('vis_working');
+  String visAddSelected(Object n) => fill('vis_add_selected', <String, Object>{'n': n});
+  String visSummary(Object matched, Object ambiguous, Object total) => fill(
+        'vis_summary',
+        <String, Object>{'matched': matched, 'ambiguous': ambiguous, 'total': total},
+      );
+  String get visCustomerHint => raw('vis_customer_hint');
+  String get visConfidence => raw('vis_confidence');
+  String get visNoMatch => raw('vis_no_match');
+  String get visHintWas => raw('vis_hint_was');
+  String get visStockHint => raw('vis_stock_hint');
+  String get visNoteLabel => raw('vis_note_label');
+  String get visQtyLabel => raw('vis_qty_label');
+  String get visPriceNote => raw('vis_price_note');
+  String get visFilterAll => raw('vis_filter_all');
+  String get visFilterNeedsPick => raw('vis_filter_needs_pick');
+  String get visFilterUnmatched => raw('vis_filter_unmatched');
+  String get visSearchPlaceholder => raw('vis_search_placeholder');
+  String get visZoomPhoto => raw('vis_zoom_photo');
+  String get visSelectAll => raw('vis_select_all');
+  String get visClearAll => raw('vis_clear_all');
+  String get visFilterEmpty => raw('vis_filter_empty');
+  String get visFilterReset => raw('vis_filter_reset');
+  String get visUnmatchedGuide => raw('vis_unmatched_guide');
+  String visChooseTitle(Object n) => fill('vis_choose_title', <String, Object>{'n': n});
+  String visTruncatedHint(Object n, Object shown) =>
+      fill('vis_truncated_hint', <String, Object>{'n': n, 'shown': shown});
+  String get visReselect => raw('vis_reselect');
+  String get visManual => raw('vis_manual');
+  String get visCategoryNone => raw('vis_category_none');
+  String get visImageDecodeFailed => raw('vis_image_decode_failed');
+  String get visImageTooLarge => raw('vis_image_too_large');
+
   String get ordEmptyItems => raw('ord_empty_items');
   String get ordDeleteConfirm => raw('ord_delete_confirm');
   String get shrNew => raw('shr_new');

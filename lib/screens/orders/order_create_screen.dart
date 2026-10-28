@@ -1,11 +1,10 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/formatters.dart';
 import '../../core/l10n.dart';
+import '../../core/vision_image.dart';
 import '../../data/entities.dart';
 import '../../design/tokens.dart';
 import '../../design/widgets/controls.dart';
@@ -14,11 +13,21 @@ import '../../design/widgets/sheets.dart';
 import '../../design/widgets/state_views.dart';
 import '../../design/widgets/surfaces.dart';
 import '../../state/app_state.dart';
+import '../../state/vision_review_model.dart' show VisionPick;
+import 'vision_review_screen.dart';
 
-/// 明细行选商品：开单页与订单详情页共用同一支搜索抽屉。
+/// 明细行选商品：开单页与订单详情页、拍照复核页共用同一支搜索抽屉。
 /// 入库默认带出成本、出库默认带出售价，方向决定预填价。
-Future<Product?> pickProductForOrder(BuildContext context, {required bool inbound}) =>
-    pushSheet<Product>(context, child: _ProductSearchSheet(inbound: inbound));
+/// [initialKeyword] 给复核页的「手动选品」用：带上模型这一行读到的码，不必从零再打一遍。
+Future<Product?> pickProductForOrder(
+  BuildContext context, {
+  required bool inbound,
+  String initialKeyword = '',
+}) =>
+    pushSheet<Product>(
+      context,
+      child: _ProductSearchSheet(inbound: inbound, initialKeyword: initialKeyword),
+    );
 
 /// 开单：一屏完成「方向 / 客户 / 明细」，底部两颗键分别对应草稿与定稿。
 ///
@@ -162,73 +171,60 @@ class _OrderCreateScreenState extends State<OrderCreateScreen> {
     if (source == null) return;
 
     setState(() => _scanning = true);
+    final String dataUrl;
     try {
       final XFile? file = await ImagePicker().pickImage(
         source: source,
-        maxWidth: 1600,
-        maxHeight: 1600,
-        imageQuality: 80,
+        // 与网页端质量阶梯的第一档对齐：1280 px / 82 由系统编解码器完成，
+        // 只有压不进上限的图片才会落到 isolate 里的重编。
+        maxWidth: 1280,
+        maxHeight: 1280,
+        imageQuality: 82,
       );
       if (file == null) return;
-      final String dataUrl =
-          'data:image/jpeg;base64,${base64Encode(await file.readAsBytes())}';
-      final List<VisionLine> rows =
-          await app.repos.orders.visionDraft(dataUrl: dataUrl);
-      if (!mounted) return;
-      await _applyVision(rows);
-    } on Object catch (error) {
+      dataUrl = await compressImageForVision(await file.readAsBytes());
+    } on VisionImageException catch (failure) {
       if (mounted) {
-        showToast(context, app.describeError(error), danger: true);
+        showToast(
+          context,
+          failure.problem == VisionImageProblem.tooLarge
+              ? app.l10n.visImageTooLarge
+              : app.l10n.visImageDecodeFailed,
+          danger: true,
+        );
       }
+      return;
+    } on Object catch (error) {
+      if (mounted) showToast(context, app.describeError(error), danger: true);
+      return;
     } finally {
       if (mounted) setState(() => _scanning = false);
     }
-  }
+    if (!mounted) return;
 
-  /// 识别结果只填 matched 且非歧义的行；歧义行必须人工从候选里选，服务端刻意不猜 top-1。
-  Future<void> _applyVision(List<VisionLine> rows) async {
-    final AppState app = AppState.of(context);
-    final L10n l10n = app.l10n;
-    final List<VisionLine> ambiguous = rows
-        .where((VisionLine line) => line.needsManualPick && line.candidates.isNotEmpty)
-        .toList(growable: false);
-
-    for (final VisionLine line in rows) {
-      final Product? product = line.product;
-      if (product == null || !line.matched) continue;
-      _addVisionLine(product, line.qty);
-    }
-    setState(() {});
-
-    if (ambiguous.isNotEmpty) {
-      showToast(context, l10n.ordVisionAmbiguous(ambiguous.length));
-      for (final VisionLine line in ambiguous) {
-        final Product? chosen = await showDrawer<Product>(
-          context,
-          accent: AppInk.ai,
-          title: l10n.ordVisionPick,
-          builder: (BuildContext sheetContext) => _CandidateSheet(
-            line: line,
-            l10n: l10n,
-          ),
-        );
-        if (chosen != null) _addVisionLine(chosen, line.qty);
+    // 识别结果先落在整表复核页：歧义与未匹配行必须由卖家当场处理，
+    // 而不是像过去那样逐行弹窗——关掉一屏就等于丢掉一屏。
+    final List<VisionPick>? rows = await pushSheet<List<VisionPick>>(
+      context,
+      child: VisionReviewScreen(imageDataUrl: dataUrl, inbound: _inbound),
+    );
+    if (rows == null || rows.isEmpty || !mounted) return;
+    setState(() {
+      for (final VisionPick row in rows) {
+        _addVisionLine(row.product, row.qty);
       }
-      setState(() {});
-    }
+    });
   }
 
+  /// 复核页交回的行：单价与箱规一律取库里的数（`VisionLine.product` 已把库位行归一），
+  /// 模型只提出候选与数量。进/出库都用 `unit_price`，与网页端 `addFromVision` 同一口径。
   void _addVisionLine(Product product, int qty) {
-    final int quantity = qty <= 0 ? 1 : qty;
     final int existing = _lines.indexWhere((_DraftLine l) => l.product.id == product.id);
     if (existing >= 0) {
-      _lines[existing].quantity += quantity;
+      _lines[existing].quantity += qty;
       return;
     }
-    _lines.add(_DraftLine(
-      product: product,
-      unitPrice: product.price > 0 ? product.price : _inbound ? product.cost : 0,
-    )..quantity = quantity);
+    _lines.add(_DraftLine(product: product, unitPrice: product.price)..quantity = qty);
   }
 
   Future<void> _save({required bool finalize}) async {
@@ -747,16 +743,20 @@ class _InlinePriceState extends State<_InlinePrice> {
 
 /// 商品选择页：服务端 `/products/search` 已经做了模糊匹配与清洗，客户端不再二次打分。
 class _ProductSearchSheet extends StatefulWidget {
-  const _ProductSearchSheet({required this.inbound});
+  const _ProductSearchSheet({required this.inbound, this.initialKeyword = ''});
 
   final bool inbound;
+
+  /// 拍照复核页的「手动选品」把模型这一行读到的码带进来，省去从零再打一遍。
+  final String initialKeyword;
 
   @override
   State<_ProductSearchSheet> createState() => _ProductSearchSheetState();
 }
 
 class _ProductSearchSheetState extends State<_ProductSearchSheet> {
-  final TextEditingController _search = TextEditingController();
+  late final TextEditingController _search =
+      TextEditingController(text: widget.initialKeyword);
   List<Product> _rows = const <Product>[];
   bool _loading = true;
   String? _error;
@@ -764,7 +764,7 @@ class _ProductSearchSheetState extends State<_ProductSearchSheet> {
   @override
   void initState() {
     super.initState();
-    _run('');
+    _run(widget.initialKeyword);
   }
 
   @override
@@ -849,64 +849,6 @@ class _ProductSearchSheetState extends State<_ProductSearchSheet> {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _CandidateSheet extends StatelessWidget {
-  const _CandidateSheet({required this.line, required this.l10n});
-
-  final VisionLine line;
-  final L10n l10n;
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      padding: EdgeInsets.zero,
-      children: <Widget>[
-        if (line.hintLabel.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: Text(
-              '${l10n.ordVisionHint}：${line.hintLabel}',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-          ),
-        for (final VisionCandidate candidate in line.candidates)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: AppCard(
-              accent: AppInk.ai,
-              padding: const EdgeInsets.all(12),
-              onTap: () => Navigator.of(context).pop(candidate.product),
-              child: Row(
-                children: <Widget>[
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        Text(candidate.name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.titleMedium),
-                        Text(
-                          '${candidate.sku} · ${Fmt.count(candidate.product.quantity)}${candidate.product.unit}',
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (candidate.matchKind.isSkuBased)
-                    StatusPill(
-                      label: candidate.matchKind.name,
-                      color: AppInk.ai,
-                      dense: true,
-                    ),
-                ],
-              ),
-            ),
-          ),
-      ],
     );
   }
 }

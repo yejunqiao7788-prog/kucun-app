@@ -24,6 +24,9 @@ dependencies:
   record: ^7.1.2
   file_picker: ^13.3.0
   excel: ^4.0.6
+  # 拍照录单的兜底重编：image_picker 压不进 3.5 MB 上限时，在 isolate 里走质量阶梯。
+  # 它本来就在依赖树里（excel 带进来），这里只是提到直接依赖。
+  image: ^4.3.0
   printing: ^5.14.3
   pdf: ^3.12.0
 
