@@ -324,7 +324,7 @@ class _VisionReviewScreenState extends State<VisionReviewScreen> {
                   separatorBuilder: (_, __) => const VGap(10),
                   itemBuilder: (BuildContext context, int slot) {
                     final int index = visible[slot];
-                    return _VisionRow(
+                    return VisionRowCard(
                       key: ValueKey<int>(index),
                       line: model.draft.items[index],
                       status: model.statusOf(index),
@@ -391,8 +391,10 @@ class _Photo extends StatelessWidget {
   }
 }
 
-class _VisionRow extends StatelessWidget {
-  const _VisionRow({
+/// 复核列表的一行。公开只为让布局能在测试里被真正摆一遍：
+/// 行内排版出错在 release 包里就是一块灰，analyze 抓不到。
+class VisionRowCard extends StatelessWidget {
+  const VisionRowCard({
     super.key,
     required this.line,
     required this.status,
@@ -457,6 +459,12 @@ class _VisionRow extends StatelessWidget {
     );
   }
 
+  /// 「模型读到什么」这一排是卖家判断这一行的唯一依据。
+  ///
+  /// 网页端用 `flex flex-wrap` + `min-w-0`，Flutter 里对应的容器是 `Wrap`，而 `Wrap`
+  /// 不接受 `Flexible`/`Expanded`（那是 `Row`/`Column` 的 ParentData）——放进去 release 包
+  /// 会把整棵子树画成一块灰。所以这里一律用普通 `Text`：`Wrap` 已经把子项宽度上限给到
+  /// 自己的可用宽，长文本自然折行，两行封顶后截断。
   Widget _details(bool ready) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -471,22 +479,22 @@ class _VisionRow extends StatelessWidget {
               color: AppInk.textTertiary,
               dense: true,
             ),
-            Flexible(
-              child: Text(
-                <String>[
-                  '${l10n.visHintWas}：${line.hintWas}',
-                  if (line.categoryHint.isNotEmpty) line.categoryHint,
-                ].join(' · '),
-                style: const TextStyle(fontSize: AppType.foot),
-              ),
+            Text(
+              <String>[
+                '${l10n.visHintWas}：${line.hintWas}',
+                if (line.categoryHint.isNotEmpty) line.categoryHint,
+              ].join(' · '),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: AppType.foot),
             ),
             if (line.note.isNotEmpty)
-              Flexible(
-                child: Text(
-                  '${l10n.visNoteLabel}：${line.note}',
-                  style: const TextStyle(
-                      fontSize: AppType.foot, fontStyle: FontStyle.italic),
-                ),
+              Text(
+                '${l10n.visNoteLabel}：${line.note}',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                    fontSize: AppType.foot, fontStyle: FontStyle.italic),
               ),
           ],
         ),
@@ -667,13 +675,15 @@ class _SkuName extends StatelessWidget {
       children: <Widget>[
         Text(sku,
             style: const TextStyle(
-                fontSize: AppType.body, fontWeight: AppType.heavy, fontFamily: 'monospace')),
-        Flexible(
-          child: Text(name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: AppType.foot)),
-        ),
+                fontSize: AppType.body,
+                fontWeight: AppType.heavy,
+                fontFamily: 'monospace')),
+        // 与网页端 `min-w-0`（移动端不 truncate）一致：库位名跟着码排在同一行，
+        // 放不下就自己折行，最多两行后截断。Wrap 里不能放 Flexible。
+        Text(name,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: AppType.foot)),
       ],
     );
   }
