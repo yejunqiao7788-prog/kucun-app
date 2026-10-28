@@ -98,13 +98,18 @@ class _VisionReviewScreenState extends State<VisionReviewScreen> {
   }
 
   void _zoom() {
+    final double tall = MediaQuery.sizeOf(context).height - 140;
     showDialog<void>(
       context: context,
       barrierDismissible: true,
       builder: (BuildContext dialogContext) => Dialog(
         insetPadding: const EdgeInsets.all(8),
         child: InteractiveViewer(
-          child: _Photo(dataUrl: widget.imageDataUrl),
+          child: _Photo(
+            dataUrl: widget.imageDataUrl,
+            maxHeight: tall,
+            fit: BoxFit.contain,
+          ),
         ),
       ),
     );
@@ -175,7 +180,12 @@ class _VisionReviewScreenState extends State<VisionReviewScreen> {
       children: <Widget>[
         ClipRRect(
           borderRadius: Radii.card_,
-          child: _Photo(dataUrl: widget.imageDataUrl, maxHeight: 260),
+          // 整张照片都要看得见：识别靠的就是那几个字，裁掉一半就没法核对。
+          child: _Photo(
+            dataUrl: widget.imageDataUrl,
+            maxHeight: 260,
+            fit: BoxFit.contain,
+          ),
         ),
         const VGap(14),
         AppTextField(
@@ -350,27 +360,32 @@ class _VisionReviewScreenState extends State<VisionReviewScreen> {
 }
 
 /// 结果里的行本身不带图片，缩略图只有一个：卖家拍的那张原图。
+/// 尺寸一律由调用方给死（宽填满、高固定）：图本身的 intrinsic 尺寸是相机原图，
+/// 交给布局去猜就会在对话框里溢出。
 class _Photo extends StatelessWidget {
-  const _Photo({required this.dataUrl, this.maxHeight});
+  const _Photo({
+    required this.dataUrl,
+    this.maxHeight,
+    this.fit = BoxFit.cover,
+  });
 
   final String dataUrl;
   final double? maxHeight;
+  final BoxFit fit;
 
   @override
   Widget build(BuildContext context) {
     final int comma = dataUrl.indexOf(',');
     final Uint8List bytes =
         base64Decode(comma < 0 ? dataUrl : dataUrl.substring(comma + 1));
-    return ConstrainedBox(
-      constraints: BoxConstraints(maxHeight: maxHeight ?? 46),
+    return SizedBox(
+      width: double.infinity,
+      height: maxHeight ?? 46,
       child: Image.memory(
         bytes,
-        fit: BoxFit.cover,
+        fit: fit,
         errorBuilder: (BuildContext context, Object error, StackTrace? stack) =>
-            const SizedBox(
-                width: 46,
-                height: 46,
-                child: Icon(Icons.broken_image_outlined, color: AppInk.textTertiary)),
+            const Icon(Icons.broken_image_outlined, color: AppInk.textTertiary),
       ),
     );
   }
