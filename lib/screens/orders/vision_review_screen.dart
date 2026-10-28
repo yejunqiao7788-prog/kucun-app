@@ -707,11 +707,14 @@ List<Widget> _metaChips(
 ) {
   final TextStyle foot = const TextStyle(fontSize: AppType.foot);
   return <Widget>[
-    Text(
-      product.categoryName?.isNotEmpty == true
+    // 柜名是这一行里唯一的区分维度，网页端给它单独一枚 chip 而不是混在小字里；
+    // 手动选品面板也是同样的排版，两处得一眼对得上。
+    StatusPill(
+      label: product.categoryName?.isNotEmpty == true
           ? product.categoryName!
           : l10n.visCategoryNone,
-      style: foot,
+      color: AppInk.settings,
+      dense: true,
     ),
     Text(
       '${l10n.visStockHint} ${Fmt.count(product.quantity)}',
