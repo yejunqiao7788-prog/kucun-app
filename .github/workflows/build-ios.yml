@@ -1,0 +1,60 @@
+name: Build iOS Release (unsigned)
+
+# iOS 只能在 macOS 上编：Xcode 工具链没有 Linux/Windows 版，所以这条作业单独占一个
+# macos runner，而不是塞进 build-apk.yml。仓库是公开的，GitHub Actions 在免费额度内。
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'lib/**'
+      - 'assets/**'
+      - 'ios/**'
+      - 'pubspec.yaml'
+      - '.github/workflows/build-ios.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Show toolchain
+        run: |
+          flutter --version
+          xcodebuild -version
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build iOS release (unsigned)
+        # CI 手里没有 Apple 证书，所以只能 --no-codesign：产物证明的是「这套代码编得过 iOS」，
+        # 不是能装进手机的包。要装机得走签名（开发者账号证书 + profile，或本机 Xcode 免费签）。
+        run: flutter build ios --release --no-codesign
+
+      - name: Package .app
+        run: |
+          cd build/ios/iphoneos
+          ditto -c -k --sequesterRsrc Runner.app torgseek-kucun-ios-unsigned.zip
+
+      - name: Upload unsigned .app
+        uses: actions/upload-artifact@v4
+        with:
+          name: torgseek-kucun-ios-unsigned
+          path: build/ios/iphoneos/torgseek-kucun-ios-unsigned.zip
