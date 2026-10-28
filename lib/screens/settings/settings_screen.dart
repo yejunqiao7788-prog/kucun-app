@@ -205,6 +205,8 @@ class _Header extends StatelessWidget {
       children: <Widget>[
         Text(
           title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: const TextStyle(
             fontSize: AppType.huge,
             fontWeight: AppType.heavy,
@@ -213,7 +215,12 @@ class _Header extends StatelessWidget {
         ),
         if (subtitle != null) ...<Widget>[
           const VGap(4),
-          Text(subtitle!, style: Theme.of(context).textTheme.bodyMedium),
+          Text(
+            subtitle!,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
         ],
       ],
     );

@@ -72,6 +72,8 @@ class _ProductsScreenState extends State<ProductsScreen> {
                 Expanded(
                   child: Text(
                     l10n.navProducts,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       fontSize: AppType.huge,
                       fontWeight: AppType.heavy,

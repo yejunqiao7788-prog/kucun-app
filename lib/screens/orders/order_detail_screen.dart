@@ -292,7 +292,11 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(order?.orderNumber ?? l10n.navOrders),
+        title: Text(
+          order?.orderNumber ?? l10n.navOrders,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
         actions: <Widget>[
           if (order != null && draft && app.canWrite)
             IconButton(

@@ -827,15 +827,25 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
   );
   bool _uploading = false;
 
+  void _repaint() {
+    if (mounted) setState(() {});
+  }
+
   @override
   void initState() {
     super.initState();
+    // AppBar 在 AnimatedBuilder 外面，取数写在 build 里就会被闭包捕获成旧值：
+    // 挂监听让整页重跑，标题、编辑按钮和正文一起跟上数据。
+    _listing.addListener(_repaint);
+    _docs.addListener(_repaint);
     unawaited(_listing.load());
     unawaited(_docs.load());
   }
 
   @override
   void dispose() {
+    _listing.removeListener(_repaint);
+    _docs.removeListener(_repaint);
     _listing.dispose();
     _docs.dispose();
     super.dispose();
@@ -1862,11 +1872,13 @@ class _CampaignsTabState extends State<_CampaignsTab> {
   Widget build(BuildContext context) {
     final AppState app = context.watch<AppState>();
     final L10n l10n = app.l10n;
-    final MpCampaignPage? board = _page.value;
 
     return AnimatedBuilder(
       animation: _page,
       builder: (BuildContext context, Widget? _) {
+        // 取数必须写在 builder 里：写在 build 里就被闭包捕获成旧值，
+        // loader 通知时 AnimatedBuilder 只重跑同一个闭包，数据到了还是走 null 分支。
+        final MpCampaignPage? board = _page.value;
         if (_page.loading && board == null) {
           return const SafeArea(child: SkeletonList(count: 3, itemHeight: 120));
         }
@@ -2324,11 +2336,11 @@ class _AnalyticsTabState extends State<_AnalyticsTab> {
   Widget build(BuildContext context) {
     final AppState app = context.watch<AppState>();
     final L10n l10n = app.l10n;
-    final MpAnalytics? data = _data.value;
 
     return AnimatedBuilder(
       animation: _data,
       builder: (BuildContext context, Widget? _) {
+        final MpAnalytics? data = _data.value;
         if (_data.loading && data == null) {
           return const SafeArea(child: SkeletonList(count: 4, itemHeight: 110));
         }
@@ -2555,9 +2567,17 @@ class _StoreTabState extends State<_StoreTab> {
   late final ValueLoader<List<JsonMap>> _mappings =
       ValueLoader<List<JsonMap>>(() => _app.repos.market.mappings());
 
+  void _repaint() {
+    if (mounted) setState(() {});
+  }
+
   @override
   void initState() {
     super.initState();
+    // 同 ListingDetail：build 里捕获的 seller/tg 不会随 loader 通知换新。
+    _seller.addListener(_repaint);
+    _telegram.addListener(_repaint);
+    _mappings.addListener(_repaint);
     unawaited(_seller.load());
     unawaited(_telegram.load());
     unawaited(_mappings.load());
@@ -2565,6 +2585,9 @@ class _StoreTabState extends State<_StoreTab> {
 
   @override
   void dispose() {
+    _seller.removeListener(_repaint);
+    _telegram.removeListener(_repaint);
+    _mappings.removeListener(_repaint);
     _seller.dispose();
     _telegram.dispose();
     _mappings.dispose();

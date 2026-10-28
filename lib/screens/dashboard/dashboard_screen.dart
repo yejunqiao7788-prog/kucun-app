@@ -64,8 +64,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final AppState app = context.watch<AppState>();
     final L10n l10n = app.l10n;
 
-    return Scaffold(
-      body: AnimatedBuilder(
+    // 与另外三个根标签同形：最外层 SafeArea(bottom: false)。
+    // 工作台原先是唯一没有顶部安全区的根标签，列表首行从 y=8 起就压在状态栏下面，
+    // 这才是它「看起来溢出」、其它页不溢出的原因。
+    return SafeArea(
+      bottom: false,
+      child: AnimatedBuilder(
         animation: Listenable.merge(<Listenable>[_orders, _logs]),
         builder: (BuildContext context, Widget? _) => RefreshIndicator(
           onRefresh: _refresh,

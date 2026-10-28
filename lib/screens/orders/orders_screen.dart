@@ -128,6 +128,8 @@ class _OrdersScreenState extends State<OrdersScreen> {
                 Expanded(
                   child: Text(
                     l10n.navOrders,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       fontSize: AppType.huge,
                       fontWeight: AppType.heavy,
