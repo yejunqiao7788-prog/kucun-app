@@ -23,7 +23,10 @@ concurrency:
 
 jobs:
   build:
-    runs-on: macos-14
+    # 钉 macos-15（Xcode 16.4 / Swift 6.1）而不是 macos-14（Xcode 15.4 / Swift 5.10）：
+    # shared_preferences_foundation 2.6.1 的 pigeon 生成码用了尾逗号列表（SE-0439，Swift 6.1 才实现），
+    # 在 15.4 上是 `Swift Compiler Error: Unexpected ',' separator`，报在插件生成码里、和本仓代码无关。
+    runs-on: macos-15
 
     steps:
       - name: Checkout repository
