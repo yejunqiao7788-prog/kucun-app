@@ -634,11 +634,17 @@ class L10n {
   String get setMemoContentRequired => raw('set_memo_content_required');
   String get setMemoDeleteConfirm => raw('set_memo_delete_confirm');
   String get setMemoDone => raw('set_memo_done');
+  String setMemoDoneCount(Object count) =>
+      fill('set_memo_done_count', <String, Object>{'count': count});
   String get setMemoEmpty => raw('set_memo_empty');
   String get setMemoEmptyHint => raw('set_memo_empty_hint');
   String get setMemoHigh => raw('set_memo_high');
   String get setMemoNew => raw('set_memo_new');
   String get setMemoNormal => raw('set_memo_normal');
+  String setMemoPendingCount(Object count) =>
+      fill('set_memo_pending_count', <String, Object>{'count': count});
+  String get setMemoStar => raw('set_memo_star');
+  String get setMemoUnstar => raw('set_memo_unstar');
   String get setModules => raw('set_modules');
   String get setNoPayableChannel => raw('set_no_payable_channel');
   String get setPayStillPending => raw('set_pay_still_pending');

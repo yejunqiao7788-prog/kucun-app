@@ -181,6 +181,7 @@ class RowCard extends StatelessWidget {
     this.onTap,
     this.badges = const <Widget>[],
     this.footRow,
+    this.titleStyle,
   });
 
   final String title;
@@ -191,6 +192,7 @@ class RowCard extends StatelessWidget {
   final VoidCallback? onTap;
   final List<Widget> badges;
   final Widget? footRow;
+  final TextStyle? titleStyle;
 
   @override
   Widget build(BuildContext context) {
@@ -209,7 +211,12 @@ class RowCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: text.titleMedium),
+                    Text(
+                      title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: text.titleMedium?.merge(titleStyle),
+                    ),
                     if (subtitle != null)
                       Padding(
                         padding: const EdgeInsets.only(top: 2),

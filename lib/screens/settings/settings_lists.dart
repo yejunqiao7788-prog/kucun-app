@@ -915,10 +915,37 @@ class _MemosScreenState extends State<MemosScreen> {
   late final ValueLoader<List<Memo>> _rows =
       ValueLoader<List<Memo>>(() => _app.repos.settings.memos());
 
+  /// 页内快捷添加：记一件事不必先开抽屉再关掉。
+  final TextEditingController _quick = TextEditingController();
+  bool _quickHigh = false;
+  bool _adding = false;
+
   @override
   void initState() {
     super.initState();
     unawaited(_rows.load());
+    _quick.addListener(_onQuickChanged);
+  }
+
+  void _onQuickChanged() => setState(() {});
+
+  @override
+  void dispose() {
+    _quick.removeListener(_onQuickChanged);
+    _quick.dispose();
+    super.dispose();
+  }
+
+  /// 未完成在前，其中紧急置顶，组内按时间倒序——和网页端工作台同一套排序。
+  List<Memo> _sorted(List<Memo> rows) {
+    final List<Memo> sorted = rows.toList(growable: false)
+      ..sort((Memo a, Memo b) {
+        if (a.completed != b.completed) return a.completed ? 1 : -1;
+        if (a.isHigh != b.isHigh) return a.isHigh ? -1 : 1;
+        return (b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0))
+            .compareTo(a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0));
+      });
+    return sorted;
   }
 
   @override
@@ -926,40 +953,83 @@ class _MemosScreenState extends State<MemosScreen> {
     final L10n l10n = _app.l10n;
     return Scaffold(
       appBar: AppBar(title: Text(l10n.setMemos)),
-      floatingActionButton: _app.canWrite
-          ? FloatingActionButton.extended(
-              onPressed: () => _edit(null),
-              backgroundColor: AppInk.showroom,
-              foregroundColor: Colors.white,
-              icon: const Icon(Icons.note_add_rounded),
-              label: Text(l10n.setMemoNew),
-            )
-          : null,
-      body: _ListBody<Memo>(
-        loader: _rows,
-        emptyTitle: l10n.setMemoEmpty,
-        emptyHint: l10n.setMemoEmptyHint,
-        emptyIcon: Icons.sticky_note_2_outlined,
-        accent: AppInk.showroom,
-        builder: (BuildContext context, List<Memo> rows) {
-          final List<Memo> open = rows.where((Memo m) => !m.completed).toList(growable: false);
-          final List<Memo> done = rows.where((Memo m) => m.completed).toList(growable: false);
-          return ListView(
-            padding: const EdgeInsets.fromLTRB(Space.gutter, 4, Space.gutter, 96),
-            children: <Widget>[
-              for (final Memo row in open) _MemoCard(row: row, onChanged: _toggle, onEdit: _edit),
-              if (done.isNotEmpty) ...<Widget>[
-                const VGap(8),
-                Text(l10n.setMemoDone,
-                    style: const TextStyle(fontSize: AppType.foot, color: AppInk.textTertiary)),
-                const VGap(6),
-                for (final Memo row in done) _MemoCard(row: row, onChanged: _toggle, onEdit: _edit),
-              ],
-            ],
-          );
-        },
+      body: Column(
+        children: <Widget>[
+          _MemoComposer(
+            loader: _rows,
+            controller: _quick,
+            high: _quickHigh,
+            busy: _adding,
+            canWrite: _app.canWrite,
+            onToggleHigh: () => setState(() => _quickHigh = !_quickHigh),
+            onAdd: _addQuick,
+          ),
+          Expanded(
+            child: _ListBody<Memo>(
+              loader: _rows,
+              emptyTitle: l10n.setMemoEmpty,
+              emptyHint: l10n.setMemoEmptyHint,
+              emptyIcon: Icons.sticky_note_2_outlined,
+              accent: AppInk.showroom,
+              builder: (BuildContext context, List<Memo> rows) {
+                final List<Memo> sorted = _sorted(rows);
+                final List<Memo> open =
+                    sorted.where((Memo m) => !m.completed).toList(growable: false);
+                final List<Memo> done =
+                    sorted.where((Memo m) => m.completed).toList(growable: false);
+                return ListView(
+                  padding: const EdgeInsets.fromLTRB(Space.gutter, 4, Space.gutter, 24),
+                  children: <Widget>[
+                    for (final Memo row in open) _memoRow(row),
+                    if (done.isNotEmpty) ...<Widget>[
+                      const VGap(8),
+                      Text(l10n.setMemoDone,
+                          style: const TextStyle(
+                              fontSize: AppType.foot, color: AppInk.textTertiary)),
+                      const VGap(6),
+                      for (final Memo row in done) _memoRow(row),
+                    ],
+                  ],
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
+  }
+
+  Widget _memoRow(Memo row) => _MemoCard(
+        row: row,
+        onChanged: _toggle,
+        onPriority: _togglePriority,
+        onEdit: _edit,
+        onDelete: _remove,
+      );
+
+  Future<void> _addQuick() async {
+    final L10n l10n = _app.l10n;
+    final String text = _quick.text.trim();
+    if (text.isEmpty || _adding) return;
+    setState(() => _adding = true);
+    try {
+      await _app.guardWrite<Object?>(
+        () => _app.repos.settings.createMemo(
+          text,
+          priority: _quickHigh ? 'high' : 'normal',
+        ),
+      );
+      if (!mounted) return;
+      _quick.clear();
+      setState(() => _quickHigh = false);
+      showToast(context, l10n.commonSaved);
+      await _rows.refresh();
+    } on Object catch (error) {
+      if (!mounted) return;
+      showToast(context, _app.describeError(error), danger: true);
+    } finally {
+      if (mounted) setState(() => _adding = false);
+    }
   }
 
   Future<void> _toggle(Memo row) async {
@@ -975,14 +1045,51 @@ class _MemosScreenState extends State<MemosScreen> {
     }
   }
 
-  Future<void> _edit(Memo? row) async {
+  /// 星标直接切优先级：改一件小事不该先把整张抽屉拉开。
+  Future<void> _togglePriority(Memo row) async {
+    try {
+      await _app.guardWrite<Object?>(
+        () => _app.repos.settings
+            .updateMemo(row.id, priority: row.isHigh ? 'normal' : 'high'),
+      );
+      if (!mounted) return;
+      await _rows.refresh();
+    } on Object catch (error) {
+      if (!mounted) return;
+      showToast(context, _app.describeError(error), danger: true);
+    }
+  }
+
+  Future<void> _remove(Memo row) async {
     final L10n l10n = _app.l10n;
-    final TextEditingController content = TextEditingController(text: row?.content ?? '');
-    String priority = row?.priority ?? 'normal';
+    final bool sure = await confirmAction(
+      context,
+      title: l10n.setMemos,
+      message: l10n.setMemoDeleteConfirm,
+      confirmLabel: l10n.actDelete,
+      destructive: true,
+    );
+    if (!sure || !mounted) return;
+    try {
+      await _app.guardWrite<Object?>(() => _app.repos.settings.removeMemo(row.id));
+      if (!mounted) return;
+      showToast(context, l10n.commonDeleted);
+      await _rows.refresh();
+    } on Object catch (error) {
+      if (!mounted) return;
+      showToast(context, _app.describeError(error), danger: true);
+    }
+  }
+
+  /// 抽屉只负责改正文和优先级；新建走行内快捷添加，删除走行内按钮。
+  Future<void> _edit(Memo row) async {
+    final L10n l10n = _app.l10n;
+    final TextEditingController content = TextEditingController(text: row.content);
+    String priority = row.priority;
 
     await showDrawer<void>(
       context,
-      title: row == null ? l10n.setMemoNew : l10n.actEdit,
+      title: l10n.actEdit,
       accent: AppInk.showroom,
       maxHeightFactor: 0.66,
       builder: (BuildContext sheetContext) => Column(
@@ -1017,9 +1124,8 @@ class _MemosScreenState extends State<MemosScreen> {
               }
               await Navigator.of(sheetContext).maybePop();
               try {
-                await _app.guardWrite<Object?>(() => row == null
-                    ? _app.repos.settings.createMemo(text, priority: priority)
-                    : _app.repos.settings.updateMemo(row.id, content: text, priority: priority));
+                await _app.guardWrite<Object?>(
+                    () => _app.repos.settings.updateMemo(row.id, content: text, priority: priority));
                 if (!mounted) return;
                 showToast(context, l10n.commonSaved);
                 await _rows.refresh();
@@ -1029,35 +1135,6 @@ class _MemosScreenState extends State<MemosScreen> {
               }
             },
           ),
-          if (row != null) ...<Widget>[
-            const VGap(10),
-            GhostButton(
-              label: l10n.actDelete,
-              icon: Icons.delete_outline_rounded,
-              color: AppInk.danger,
-              onPressed: () async {
-                final NavigatorState navigator = Navigator.of(sheetContext);
-                final bool sure = await confirmAction(
-                  sheetContext,
-                  title: l10n.setMemos,
-                  message: l10n.setMemoDeleteConfirm,
-                  confirmLabel: l10n.actDelete,
-                  destructive: true,
-                );
-                if (!sure) return;
-                await navigator.maybePop();
-                try {
-                  await _app.guardWrite<Object?>(() => _app.repos.settings.removeMemo(row.id));
-                  if (!mounted) return;
-                  showToast(context, l10n.commonDeleted);
-                  await _rows.refresh();
-                } on Object catch (error) {
-                  if (!mounted) return;
-                  showToast(context, _app.describeError(error), danger: true);
-                }
-              },
-            ),
-          ],
           const VGap(8),
         ],
       ),
@@ -1066,43 +1143,177 @@ class _MemosScreenState extends State<MemosScreen> {
   }
 }
 
+/// 页顶常驻的快捷添加条：一行输入 + 紧急开关，回车即存；顺带把待办/已完成计数挂在上面。
+class _MemoComposer extends StatelessWidget {
+  const _MemoComposer({
+    required this.loader,
+    required this.controller,
+    required this.high,
+    required this.busy,
+    required this.canWrite,
+    required this.onToggleHigh,
+    required this.onAdd,
+  });
+
+  final ValueLoader<List<Memo>> loader;
+  final TextEditingController controller;
+  final bool high;
+  final bool busy;
+  final bool canWrite;
+  final VoidCallback onToggleHigh;
+  final VoidCallback onAdd;
+
+  @override
+  Widget build(BuildContext context) {
+    final L10n l10n = L10n.of(Localizations.localeOf(context));
+    final Color accent = AppInk.showroom;
+    return AnimatedBuilder(
+      animation: loader,
+      builder: (BuildContext context, Widget? child) {
+        final List<Memo> rows = loader.value ?? const <Memo>[];
+        final int open = rows.where((Memo m) => !m.completed).length;
+        final int done = rows.length - open;
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(Space.gutter, 8, Space.gutter, 4),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(
+                '${l10n.setMemoPendingCount(open)}  ·  ${l10n.setMemoDoneCount(done)}',
+                style: const TextStyle(
+                  fontSize: AppType.foot,
+                  fontWeight: AppType.semi,
+                  color: AppInk.textTertiary,
+                ),
+              ),
+              const VGap(8),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: <Widget>[
+                  Expanded(
+                    child: AppTextField(
+                      label: l10n.setMemoNew,
+                      controller: controller,
+                      hint: l10n.setMemoEmptyHint,
+                      enabled: canWrite && !busy,
+                      textInputAction: TextInputAction.done,
+                      onSubmitted: (String value) => onAdd(),
+                    ),
+                  ),
+                  if (canWrite) ...<Widget>[
+                    const HGap(6),
+                    RoundIconButton(
+                      icon: high ? Icons.star_rounded : Icons.star_border_rounded,
+                      size: 40,
+                      color: high ? AppInk.danger : AppInk.textTertiary,
+                      tooltip: high ? l10n.setMemoUnstar : l10n.setMemoStar,
+                      onPressed: onToggleHigh,
+                    ),
+                    const HGap(6),
+                    if (busy)
+                      const SizedBox(
+                        width: 40,
+                        height: 40,
+                        child: Center(
+                          child: SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        ),
+                      )
+                    else
+                      RoundIconButton(
+                        icon: Icons.add_rounded,
+                        size: 40,
+                        color: accent,
+                        tooltip: l10n.actAdd,
+                        onPressed: controller.text.trim().isEmpty ? null : onAdd,
+                      ),
+                  ],
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
 class _MemoCard extends StatelessWidget {
-  const _MemoCard({required this.row, required this.onChanged, required this.onEdit});
+  const _MemoCard({
+    required this.row,
+    required this.onChanged,
+    required this.onPriority,
+    required this.onEdit,
+    required this.onDelete,
+  });
 
   final Memo row;
   final Future<void> Function(Memo) onChanged;
+  final Future<void> Function(Memo) onPriority;
   final void Function(Memo) onEdit;
+  final Future<void> Function(Memo) onDelete;
 
   @override
   Widget build(BuildContext context) {
     final AppState app = context.watch<AppState>();
     final L10n l10n = app.l10n;
-    final Color color = row.completed
-        ? AppInk.textTertiary
-        : row.isHigh
-            ? AppInk.danger
-            : AppInk.showroom;
+    // 紧急且未完成才享受红色描边＋着色；已完成的一律退成灰字删除线。
+    final bool important = row.isHigh && !row.completed;
+    final Color color =
+        row.completed ? AppInk.textTertiary : important ? AppInk.danger : AppInk.showroom;
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: RowCard(
         accent: color,
         onTap: () => onChanged(row),
         title: row.content,
+        titleStyle: row.completed
+            ? const TextStyle(decoration: TextDecoration.lineThrough, color: AppInk.textTertiary)
+            : important
+                ? const TextStyle(fontWeight: AppType.heavy)
+                : null,
         subtitle: l10n.elapsed(row.createdAt),
         badges: <Widget>[
-          if (row.isHigh && !row.completed)
-            StatusPill(label: l10n.setMemoHigh, color: AppInk.danger, dense: true),
+          if (important) StatusPill(label: l10n.setMemoHigh, color: AppInk.danger, dense: true),
         ],
         leading: Icon(
           row.completed ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
           color: color,
         ),
-        trailing: RoundIconButton(
-          icon: Icons.edit_outlined,
-          size: 32,
-          color: color,
-          tooltip: l10n.actEdit,
-          onPressed: () => onEdit(row),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            if (!row.completed) ...<Widget>[
+              RoundIconButton(
+                icon: row.isHigh ? Icons.star_rounded : Icons.star_border_rounded,
+                size: 32,
+                color: important ? AppInk.danger : AppInk.textTertiary,
+                tooltip: row.isHigh ? l10n.setMemoUnstar : l10n.setMemoStar,
+                onPressed: () => onPriority(row),
+              ),
+              const HGap(6),
+            ],
+            RoundIconButton(
+              icon: Icons.edit_outlined,
+              size: 32,
+              color: color,
+              tooltip: l10n.actEdit,
+              onPressed: () => onEdit(row),
+            ),
+            if (app.canWrite) ...<Widget>[
+              const HGap(6),
+              RoundIconButton(
+                icon: Icons.delete_outline_rounded,
+                size: 32,
+                color: AppInk.danger,
+                tooltip: l10n.actDelete,
+                onPressed: () => onDelete(row),
+              ),
+            ],
+          ],
         ),
       ),
     );
