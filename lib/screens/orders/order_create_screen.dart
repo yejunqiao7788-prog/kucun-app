@@ -838,6 +838,23 @@ class _ProductSearchSheetState extends State<_ProductSearchSheet> {
                             title: row.name,
                             subtitle: '${row.sku} · ${widget.inbound ? l10n.prodCost : l10n.prodPrice} '
                                 '${Fmt.money(widget.inbound ? row.cost : row.price, symbol: app.profile.currencySymbol)}',
+                            // 同码分柜是这里的常态，柜名是唯一的区分维度，所以每一行都把柜名摆出来；
+                            // 按箱卖的货还要看箱规，否则进/出库单只有总数、不知道该下几箱。
+                            badges: <Widget>[
+                              StatusPill(
+                                label: row.categoryName?.isNotEmpty == true
+                                    ? row.categoryName!
+                                    : l10n.visCategoryNone,
+                                color: AppInk.settings,
+                                dense: true,
+                              ),
+                              if (row.sellsByBox)
+                                StatusPill(
+                                  label: '${l10n.unitBox} × ${row.unitsPerBox}',
+                                  color: AppInk.finance,
+                                  dense: true,
+                                ),
+                            ],
                             leading: Thumbnail(url: row.imageUrl, size: 40),
                             trailing: Text(
                               '${Fmt.count(row.quantity)}${row.unit}',
