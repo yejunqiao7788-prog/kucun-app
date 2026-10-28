@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/l10n.dart';
+import '../../state/value_loader.dart';
 import '../tokens.dart';
 import 'surfaces.dart';
 
@@ -193,6 +194,35 @@ class NoticeBanner extends StatelessWidget {
           if (action != null) action!,
         ],
       ),
+    );
+  }
+}
+
+/// 刷新失败但旧数据还在：内容照常显示，只在上方挂一条横幅说明这是上一次成功拉到的，
+/// 并给一个重试把手（有些卡片区域没有下拉刷新）。
+class RefreshFailureBanner extends StatelessWidget {
+  const RefreshFailureBanner({super.key, required this.errorText, this.onRetry});
+
+  /// 单对象加载器的常见用法：有旧值才当「陈旧」处理，空屏的错仍归错误页管。
+  RefreshFailureBanner.stale(ValueLoader<Object?> loader, {super.key})
+      : errorText = loader.hasValue ? loader.errorText : null,
+        onRetry = loader.refresh;
+
+  final String? errorText;
+  final VoidCallback? onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final String? text = errorText;
+    if (text == null) return const SizedBox.shrink();
+    final L10n l10n = L10n.of(Localizations.localeOf(context));
+    return NoticeBanner(
+      text: text,
+      color: AppInk.warning,
+      icon: Icons.cloud_off_rounded,
+      action: onRetry == null
+          ? null
+          : TextButton(onPressed: onRetry, child: Text(l10n.actRetry)),
     );
   }
 }

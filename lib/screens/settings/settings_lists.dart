@@ -1396,6 +1396,7 @@ class _PrintSettingsScreenState extends State<PrintSettingsScreen> {
           return ListView(
             padding: const EdgeInsets.fromLTRB(Space.gutter, 6, Space.gutter, 40),
             children: <Widget>[
+              RefreshFailureBanner.stale(_loader),
               NoticeBanner(
                 text: l10n.setPrintNote,
                 color: AppInk.products,

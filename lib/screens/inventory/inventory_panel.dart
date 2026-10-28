@@ -205,6 +205,11 @@ class _InventoryPanelState extends State<InventoryPanel> {
               color: AppInk.info,
               icon: Icons.history_rounded,
             ),
+          )
+        else if (_loader.hasValue && _loader.errorText != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(Space.gutter, 0, Space.gutter, 0),
+            child: RefreshFailureBanner.stale(_loader),
           ),
         Expanded(child: _body(l10n)),
       ],

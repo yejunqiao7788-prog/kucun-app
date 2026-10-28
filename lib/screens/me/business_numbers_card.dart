@@ -71,6 +71,7 @@ class BusinessNumbersCard extends StatelessWidget {
                   onRetry: numbers.load,
                 )
               else ...<Widget>[
+                RefreshFailureBanner.stale(numbers),
                 _Numbers(
                   stats: snapshot.stats,
                   revealed: revealed,

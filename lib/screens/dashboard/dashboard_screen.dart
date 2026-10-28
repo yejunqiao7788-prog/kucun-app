@@ -100,6 +100,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                 ),
               const VGap(14),
+              // 下拉刷新失败但旧数据还在：整屏看着正常，其实已经不掉新数了，得说一声。
+              RefreshFailureBanner.stale(_orders),
+              RefreshFailureBanner(
+                errorText: _logs.rows.isEmpty ? null : _logs.errorText,
+                onRetry: _logs.refresh,
+              ),
               SectionHeader(title: l10n.dashQuickActions, accent: AppInk.dashboard),
               QuickActionRow(l10n: l10n, app: app),
               const VGap(22),

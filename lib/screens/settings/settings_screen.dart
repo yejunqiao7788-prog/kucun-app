@@ -892,22 +892,26 @@ class _RenewalCard extends StatelessWidget {
                   message: plans.errorText ?? l10n.commonErrorTitle,
                   onRetry: plans.load,
                 )
-              else if (!board.anyPayable)
-                Text(l10n.setNoPayableChannel, style: Theme.of(context).textTheme.bodyMedium)
-              else
-                for (final PlanChannel channel in board.channels)
-                  if (channel.payable)
-                    for (final PlanRow plan in channel.plans)
-                      if (plan.hasPrice)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: _PlanTile(
-                            plan: plan,
-                            channel: channel,
-                            busy: busy,
-                            onPay: onPay,
+              else ...<Widget>[
+                RefreshFailureBanner.stale(plans),
+                if (!board.anyPayable)
+                  Text(l10n.setNoPayableChannel,
+                      style: Theme.of(context).textTheme.bodyMedium)
+                else
+                  for (final PlanChannel channel in board.channels)
+                    if (channel.payable)
+                      for (final PlanRow plan in channel.plans)
+                        if (plan.hasPrice)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: _PlanTile(
+                              plan: plan,
+                              channel: channel,
+                              busy: busy,
+                              onPay: onPay,
+                            ),
                           ),
-                        ),
+              ],
             ],
           ),
         );

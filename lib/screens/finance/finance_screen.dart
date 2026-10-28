@@ -301,6 +301,7 @@ class _OverviewTab extends StatelessWidget {
     }
 
     final List<Widget> banners = <Widget>[
+      RefreshFailureBanner.stale(stats),
       if (stale)
         NoticeBanner(
           text: l10n.commonStaleBanner,
@@ -711,6 +712,7 @@ class _DebtsTab extends StatelessWidget {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(Space.gutter, 0, Space.gutter, 40),
         children: <Widget>[
+          RefreshFailureBanner.stale(debts),
           if (data.asBool('truncated'))
             NoticeBanner(
               text: l10n.finTruncated,
@@ -1029,6 +1031,10 @@ class _WalletTabState extends State<_WalletTab> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(Space.gutter, 0, Space.gutter, 40),
           children: <Widget>[
+            // 这两份数据不在 _loaderCard 里，失败不会自己冒出来：档位决定能不能充值，
+            // 流水决定看起来有没有欠账，刷失败了得说一声。
+            RefreshFailureBanner.stale(_topup),
+            RefreshFailureBanner.stale(_history),
             _loaderCard<WalletAccount>(
               loader: _wallet,
               accent: AppInk.ai,
@@ -1212,15 +1218,21 @@ class _WalletTabState extends State<_WalletTab> {
         ),
       );
     }
-    return AppCard(
-      accent: accent,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          SectionHeader(title: title, accent: accent),
-          builder(context, loader.value as T),
-        ],
-      ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        RefreshFailureBanner.stale(loader),
+        AppCard(
+          accent: accent,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              SectionHeader(title: title, accent: accent),
+              builder(context, loader.value as T),
+            ],
+          ),
+        ),
+      ],
     );
   }
 

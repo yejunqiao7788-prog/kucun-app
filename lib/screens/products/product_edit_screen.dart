@@ -482,11 +482,13 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
   /// 成交行：改价、补货前先看这支货实际怎么走的，省掉跳订单页再搜一遍。
   Widget _historyGroup(L10n l10n) {
     final List<ProductHistoryEntry> rows = _history.value ?? const <ProductHistoryEntry>[];
+    // 只有「一次都没拉到」才当失败占位；重刷失败但旧成交还在，就照常留着那些行。
+    final bool historyFailed = _history.value == null && _history.errorText != null;
     final TextStyle? small = Theme.of(context).textTheme.bodySmall;
     return _group(
       title: l10n.prodHistory,
       accent: AppInk.orders,
-      note: (!_history.loading && _history.errorText == null && rows.isNotEmpty)
+      note: (!_history.loading && !historyFailed && rows.isNotEmpty)
           ? l10n.prodHistoryNote(rows.length)
           : null,
       children: <Widget>[
@@ -496,7 +498,7 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
             padding: EdgeInsets.symmetric(vertical: 16),
             child: Center(child: AppSpinner()),
           )
-        else if (_history.errorText != null)
+        else if (historyFailed)
           Text(_history.errorText!, style: small)
         else if (rows.isEmpty)
           Text(l10n.prodHistoryEmpty, style: small)
