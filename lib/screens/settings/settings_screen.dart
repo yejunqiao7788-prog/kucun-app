@@ -49,21 +49,82 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return BusinessNumbers(res.data, res.stale);
   });
 
+  /// 价目表同理：这张卡在列表里靠上，往下滑就随 State 一起销毁，自己取数等于滑回来先铺骨架屏。
+  late final ValueLoader<PlanBoard> _plans =
+      ValueLoader<PlanBoard>(() => _app.repos.settings.plans());
+
+  /// 打码开关也归页面：滑走再滑回来不该偷偷重新遮上。
+  bool _revealed = false;
+
+  /// 下单与轮询同样挂在页面：续费要跳外部收银台，回来时卡片早被滚掉了。
+  bool _busy = false;
+
   @override
   void initState() {
     super.initState();
     unawaited(_numbers.load());
+    unawaited(_plans.load());
   }
 
   @override
   void dispose() {
     _numbers.dispose();
+    _plans.dispose();
     super.dispose();
   }
 
   Future<void> _refreshAll() async {
     await _app.refreshProfileQuietly();
-    await _numbers.refresh();
+    await Future.wait<void>(<Future<void>>[_numbers.refresh(), _plans.refresh()]);
+  }
+
+  Future<void> _pay(PlanRow plan, PlanChannel channel) async {
+    final L10n l10n = _app.l10n;
+    setState(() => _busy = true);
+    try {
+      final PaymentTicket ticket = await _app.guardWrite<PaymentTicket>(
+        () => _app.repos.settings.createPayment(planType: plan.planType, channel: channel.name),
+      );
+      final Uri? uri = ticket.pageUrl == null ? null : Uri.tryParse(ticket.pageUrl!);
+      if (uri != null) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      }
+      if (!mounted) return;
+      showToast(context, l10n.finPayOpen);
+      await _poll(ticket.id);
+    } on Object catch (error) {
+      if (!mounted) return;
+      setState(() => _busy = false);
+      showToast(context, _app.describeError(error), danger: true);
+    }
+  }
+
+  Future<void> _poll(String paymentId) async {
+    for (int attempt = 0; attempt < 6; attempt++) {
+      await Future<void>.delayed(const Duration(seconds: 3));
+      try {
+        final PaymentTicket ticket = await _app.repos.settings.paymentStatus(paymentId);
+        if (ticket.succeeded) {
+          await _app.loadProfile();
+          if (!mounted) return;
+          setState(() => _busy = false);
+          showToast(context, _app.l10n.finPaidOk);
+          return;
+        }
+        if (ticket.terminal) {
+          if (!mounted) return;
+          setState(() => _busy = false);
+          showToast(context, ticket.failureReason ?? _app.l10n.commonErrorTitle, danger: true);
+          return;
+        }
+      } on Object {
+        // 轮询失败只当「还没回来」，终态会由下一次重试看到。
+        continue;
+      }
+    }
+    if (!mounted) return;
+    setState(() => _busy = false);
+    showToast(context, _app.l10n.setPayStillPending);
   }
 
   @override
@@ -94,12 +155,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               const VGap(12),
             ],
-            const _RenewalCard(),
+            _RenewalCard(plans: _plans, busy: _busy, onPay: _pay),
             const VGap(14),
             _AccountCard(profile: profile),
             if (app.canOpenModule(ModuleKey.dashboard)) ...<Widget>[
               const VGap(14),
-              BusinessNumbersCard(numbers: _numbers),
+              BusinessNumbersCard(
+                numbers: _numbers,
+                revealed: _revealed,
+                onReveal: () => setState(() => _revealed = !_revealed),
+              ),
             ],
             const VGap(14),
             const _ModuleShortcuts(),
@@ -784,40 +849,25 @@ class _SignOutCard extends StatelessWidget {
 
 /// 订阅与续费：与财务模块同一套服务端票据，但不依赖经营权限位。
 /// 未到期时常驻「我的」，与网页端的订阅页同位；到期后它就是唯一的解锁入口。
-class _RenewalCard extends StatefulWidget {
-  const _RenewalCard();
+///
+/// 无状态：价目表 loader、忙碌位与轮询都由页面持有，这张卡只管把当前的数据画出来。
+class _RenewalCard extends StatelessWidget {
+  const _RenewalCard({required this.plans, required this.busy, required this.onPay});
 
-  @override
-  State<_RenewalCard> createState() => _RenewalCardState();
-}
-
-class _RenewalCardState extends State<_RenewalCard> {
-  late final AppState _app = context.read<AppState>();
-  late final ValueLoader<PlanBoard> _plans =
-      ValueLoader<PlanBoard>(() => _app.repos.settings.plans());
-  bool _busy = false;
-
-  @override
-  void initState() {
-    super.initState();
-    unawaited(_plans.load());
-  }
-
-  @override
-  void dispose() {
-    _plans.dispose();
-    super.dispose();
-  }
+  final ValueLoader<PlanBoard> plans;
+  final bool busy;
+  final Future<void> Function(PlanRow plan, PlanChannel channel) onPay;
 
   @override
   Widget build(BuildContext context) {
-    final L10n l10n = _app.l10n;
-    final bool expired = _app.profile.subscriptionExpired;
+    final AppState app = context.watch<AppState>();
+    final L10n l10n = app.l10n;
+    final bool expired = app.profile.subscriptionExpired;
     final Color accent = expired ? AppInk.danger : AppInk.finance;
     return AnimatedBuilder(
-      animation: _plans,
+      animation: plans,
       builder: (BuildContext context, Widget? child) {
-        final PlanBoard? board = _plans.value;
+        final PlanBoard? board = plans.value;
         return AppCard(
           accent: accent,
           child: Column(
@@ -828,11 +878,14 @@ class _RenewalCardState extends State<_RenewalCard> {
                 subtitle: expired ? l10n.setRenewNote : l10n.setSubNote,
                 accent: accent,
               ),
-              if (_plans.loading && board == null)
+              if (plans.loading && board == null)
                 const SkeletonList(count: 2, itemHeight: 56)
-              else if (_plans.errorText != null && board == null)
-                AppErrorView(message: _plans.errorText!, onRetry: _plans.refresh)
-              else if (board == null || !board.anyPayable)
+              else if (board == null)
+                AppErrorView(
+                  message: plans.errorText ?? l10n.commonErrorTitle,
+                  onRetry: plans.load,
+                )
+              else if (!board.anyPayable)
                 Text(l10n.setNoPayableChannel, style: Theme.of(context).textTheme.bodyMedium)
               else
                 for (final PlanChannel channel in board.channels)
@@ -844,8 +897,8 @@ class _RenewalCardState extends State<_RenewalCard> {
                           child: _PlanTile(
                             plan: plan,
                             channel: channel,
-                            busy: _busy,
-                            onPay: _pay,
+                            busy: busy,
+                            onPay: onPay,
                           ),
                         ),
             ],
@@ -853,55 +906,6 @@ class _RenewalCardState extends State<_RenewalCard> {
         );
       },
     );
-  }
-
-  Future<void> _pay(PlanRow plan, PlanChannel channel) async {
-    final L10n l10n = _app.l10n;
-    setState(() => _busy = true);
-    try {
-      final PaymentTicket ticket = await _app.guardWrite<PaymentTicket>(
-        () => _app.repos.settings.createPayment(planType: plan.planType, channel: channel.name),
-      );
-      final Uri? uri = ticket.pageUrl == null ? null : Uri.tryParse(ticket.pageUrl!);
-      if (uri != null) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      }
-      if (!mounted) return;
-      showToast(context, l10n.finPayOpen);
-      await _poll(ticket.id);
-    } on Object catch (error) {
-      if (!mounted) return;
-      setState(() => _busy = false);
-      showToast(context, _app.describeError(error), danger: true);
-    }
-  }
-
-  Future<void> _poll(String paymentId) async {
-    for (int attempt = 0; attempt < 6; attempt++) {
-      await Future<void>.delayed(const Duration(seconds: 3));
-      try {
-        final PaymentTicket ticket = await _app.repos.settings.paymentStatus(paymentId);
-        if (ticket.succeeded) {
-          await _app.loadProfile();
-          if (!mounted) return;
-          setState(() => _busy = false);
-          showToast(context, _app.l10n.finPaidOk);
-          return;
-        }
-        if (ticket.terminal) {
-          if (!mounted) return;
-          setState(() => _busy = false);
-          showToast(context, ticket.failureReason ?? _app.l10n.commonErrorTitle, danger: true);
-          return;
-        }
-      } on Object {
-        // 轮询失败只当「还没回来」，终态会由下一次重试看到。
-        continue;
-      }
-    }
-    if (!mounted) return;
-    setState(() => _busy = false);
-    showToast(context, _app.l10n.setPayStillPending);
   }
 }
 

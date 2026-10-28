@@ -25,28 +25,28 @@ class BusinessNumbers {
 /// 从工作台搬进「我的」，是因为主屏会被人从背后瞥一眼，家底不该露在那儿。
 /// 数字默认打码，眼睛键只在这页有效 —— 取数依旧走服务端，权限位不在就整块不渲染。
 ///
-/// loader 由「我的」页的 State 持有：这张卡在 `ListView` 里，滚出可视区就会被销毁，
+/// loader 与打码状态都由「我的」页的 State 持有：这张卡在 `ListView` 里，滚出可视区就会被销毁，
 /// 自己取数的话每次滑回来都要重发请求、重铺骨架屏，看上去就是一块空白。
-class BusinessNumbersCard extends StatefulWidget {
-  const BusinessNumbersCard({super.key, required this.numbers});
+class BusinessNumbersCard extends StatelessWidget {
+  const BusinessNumbersCard({
+    super.key,
+    required this.numbers,
+    required this.revealed,
+    required this.onReveal,
+  });
 
   final ValueLoader<BusinessNumbers> numbers;
-
-  @override
-  State<BusinessNumbersCard> createState() => _BusinessNumbersCardState();
-}
-
-class _BusinessNumbersCardState extends State<BusinessNumbersCard> {
-  bool _revealed = false;
+  final bool revealed;
+  final VoidCallback onReveal;
 
   @override
   Widget build(BuildContext context) {
     final AppState app = context.watch<AppState>();
     final L10n l10n = app.l10n;
     return AnimatedBuilder(
-      animation: widget.numbers,
+      animation: numbers,
       builder: (BuildContext context, Widget? _) {
-        final BusinessNumbers? snapshot = widget.numbers.value;
+        final BusinessNumbers? snapshot = numbers.value;
         return AppCard(
           accent: AppInk.inventory,
           child: Column(
@@ -57,29 +57,29 @@ class _BusinessNumbersCardState extends State<BusinessNumbersCard> {
                 subtitle: l10n.meBizHint,
                 accent: AppInk.inventory,
                 trailing: _RevealButton(
-                  revealed: _revealed,
+                  revealed: revealed,
                   showLabel: l10n.meBizShow,
                   hideLabel: l10n.meBizHide,
-                  onPressed: () => setState(() => _revealed = !_revealed),
+                  onPressed: onReveal,
                 ),
               ),
-              if (widget.numbers.loading && snapshot == null)
+              if (numbers.loading && snapshot == null)
                 const SkeletonList(count: 2, itemHeight: 84)
               else if (snapshot == null)
                 AppErrorView(
-                  message: widget.numbers.errorText ?? l10n.commonErrorTitle,
-                  onRetry: widget.numbers.load,
+                  message: numbers.errorText ?? l10n.commonErrorTitle,
+                  onRetry: numbers.load,
                 )
               else ...<Widget>[
                 _Numbers(
                   stats: snapshot.stats,
-                  revealed: _revealed,
+                  revealed: revealed,
                   currency: app.profile.currencySymbol,
                 ),
                 const VGap(12),
                 _Footnote(
                   stats: snapshot.stats,
-                  revealed: _revealed,
+                  revealed: revealed,
                   currency: app.profile.currencySymbol,
                 ),
               ],

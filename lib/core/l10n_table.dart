@@ -93,7 +93,7 @@ const Map<String, List<String>> kStrings = <String, List<String>>{
   'auth_signed_out_elsewhere': <String>['会话已结束，请重新登录', 'Session ended — sign in again', 'Сесію завершено — увійдіть знову', 'Phiên đã kết thúc — đăng nhập lại'],
 
   // ---- 工作台 ----
-  'dash_hello': <String>['你好，{name}', 'Hi, {name}', 'Вітаємо, {name}', 'Xin chào, {name}'],
+  'dash_today': <String>['今天 · {date}', 'Today · {date}', 'Сьогодні · {date}', 'Hôm nay · {date}'],
   'dash_products': <String>['商品数', 'Products', 'Товарів', 'Sản phẩm'],
   'dash_stock_qty': <String>['库存总量', 'Units in stock', 'Одиниць на складі', 'Tổng tồn kho'],
   'dash_stock_value': <String>['库存货值', 'Stock value', 'Вартість запасів', 'Giá trị tồn kho'],

@@ -162,7 +162,7 @@ class L10n {
   String get authCode => raw('auth_code');
   String get authCodeInvalid => raw('auth_code_invalid');
   String get authSignedOutElsewhere => raw('auth_signed_out_elsewhere');
-  String dashHello(Object name) => fill('dash_hello', <String, Object>{'name': name});
+  String dashToday(Object date) => fill('dash_today', <String, Object>{'date': date});
   String get dashProducts => raw('dash_products');
   String get dashStockQty => raw('dash_stock_qty');
   String get dashStockValue => raw('dash_stock_value');

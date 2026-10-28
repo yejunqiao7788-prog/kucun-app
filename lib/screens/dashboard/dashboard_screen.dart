@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/access.dart';
+import '../../core/formatters.dart';
 import '../../core/l10n.dart';
 import '../../data/entities.dart';
 import '../../data/repositories.dart';
@@ -72,7 +73,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 130),
             children: <Widget>[
-              _Greeting(name: app.profile.displayName, tenant: app.profile.tenantName),
+              _PageHead(
+                title: app.profile.tenantName.isEmpty ? l10n.navDashboard : app.profile.tenantName,
+                subtitle: l10n.dashToday(Fmt.date(DateTime.now())),
+              ),
               const VGap(10),
               if (!app.online)
                 NoticeBanner(
@@ -155,34 +159,35 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 }
 
-class _Greeting extends StatelessWidget {
-  const _Greeting({required this.name, required this.tenant});
+class _PageHead extends StatelessWidget {
+  const _PageHead({required this.title, required this.subtitle});
 
-  final String name;
-  final String tenant;
+  final String title;
+  final String subtitle;
 
   @override
   Widget build(BuildContext context) {
-    final L10n l10n = AppState.of(context).l10n;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
+        // 与网页端同形：标题就是租户名，用户名只出现在「我的」的账号卡里。
+        // 大号字加行人名曾经把顶部顶出屏幕，这里限一行并留省略号。
         Text(
-          l10n.dashHello(name),
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
-            fontSize: AppType.huge,
-            fontWeight: AppType.heavy,
-            letterSpacing: -0.6,
-          ),
-        ),
-        const VGap(4),
-        Text(
-          tenant,
+          title,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: Theme.of(context).textTheme.bodyMedium,
+          style: const TextStyle(
+            fontSize: AppType.head,
+            fontWeight: AppType.heavy,
+            letterSpacing: -0.4,
+          ),
+        ),
+        const VGap(3),
+        Text(
+          subtitle,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: AppType.foot, color: AppInk.textSecondary),
         ),
       ],
     );
