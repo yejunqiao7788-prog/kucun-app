@@ -93,6 +93,7 @@ class _VisionReviewScreenState extends State<VisionReviewScreen> {
       context,
       inbound: widget.inbound,
       initialKeyword: seed,
+      withCategoryFilter: true,
     );
     if (picked != null) setState(() => _model!.choose(index, picked));
   }

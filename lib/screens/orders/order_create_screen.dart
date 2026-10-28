@@ -19,14 +19,20 @@ import 'vision_review_screen.dart';
 /// 明细行选商品：开单页与订单详情页、拍照复核页共用同一支搜索抽屉。
 /// 入库默认带出成本、出库默认带出售价，方向决定预填价。
 /// [initialKeyword] 给复核页的「手动选品」用：带上模型这一行读到的码，不必从零再打一遍。
+/// [withCategoryFilter] 也只有复核页要：同码分柜时先按柜收窄，网页端的 ManualPicker 同样多这一层。
 Future<Product?> pickProductForOrder(
   BuildContext context, {
   required bool inbound,
   String initialKeyword = '',
+  bool withCategoryFilter = false,
 }) =>
     pushSheet<Product>(
       context,
-      child: _ProductSearchSheet(inbound: inbound, initialKeyword: initialKeyword),
+      child: _ProductSearchSheet(
+        inbound: inbound,
+        initialKeyword: initialKeyword,
+        withCategoryFilter: withCategoryFilter,
+      ),
     );
 
 /// 开单：一屏完成「方向 / 客户 / 明细」，底部两颗键分别对应草稿与定稿。
@@ -743,12 +749,19 @@ class _InlinePriceState extends State<_InlinePrice> {
 
 /// 商品选择页：服务端 `/products/search` 已经做了模糊匹配与清洗，客户端不再二次打分。
 class _ProductSearchSheet extends StatefulWidget {
-  const _ProductSearchSheet({required this.inbound, this.initialKeyword = ''});
+  const _ProductSearchSheet({
+    required this.inbound,
+    this.initialKeyword = '',
+    this.withCategoryFilter = false,
+  });
 
   final bool inbound;
 
   /// 拍照复核页的「手动选品」把模型这一行读到的码带进来，省去从零再打一遍。
   final String initialKeyword;
+
+  /// 柜名过滤条：网页端只在复核页的手动选品里给这一层，普通加商品没有。
+  final bool withCategoryFilter;
 
   @override
   State<_ProductSearchSheet> createState() => _ProductSearchSheetState();
@@ -758,6 +771,8 @@ class _ProductSearchSheetState extends State<_ProductSearchSheet> {
   late final TextEditingController _search =
       TextEditingController(text: widget.initialKeyword);
   List<Product> _rows = const <Product>[];
+  List<Category> _categories = const <Category>[];
+  String? _categoryId;
   bool _loading = true;
   String? _error;
 
@@ -765,6 +780,7 @@ class _ProductSearchSheetState extends State<_ProductSearchSheet> {
   void initState() {
     super.initState();
     _run(widget.initialKeyword);
+    if (widget.withCategoryFilter) _loadCategories();
   }
 
   @override
@@ -773,16 +789,39 @@ class _ProductSearchSheetState extends State<_ProductSearchSheet> {
     super.dispose();
   }
 
+  Future<void> _loadCategories() async {
+    final AppState app = AppState.of(context);
+    try {
+      final List<Category> rows = await app.repos.products.categories();
+      if (mounted) setState(() => _categories = rows);
+    } on Object {
+      // 柜名只是少一个收窄手段，不能因为它把整块选品列表换成错误态。
+    }
+  }
+
   Future<void> _run(String keyword) async {
     final AppState app = AppState.of(context);
+    final String kw = keyword.trim();
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final List<Product> rows = keyword.trim().isEmpty
-          ? (await app.repos.products.list(pageSize: 30, orderBy: 'updated_at')).data.rows
-          : await app.repos.products.search(keyword.trim());
+      // `/products/search` 不认柜名，选了柜就得走带 categoryId 的列表接口；
+      // 空关键词本来就是「浏览最近更新」，同样走列表。
+      final List<Product> rows;
+      if (_categoryId == null && kw.isNotEmpty) {
+        rows = await app.repos.products.search(kw);
+      } else {
+        rows = (await app.repos.products.list(
+          pageSize: 30,
+          search: kw.isEmpty ? null : kw,
+          categoryId: _categoryId,
+          orderBy: 'updated_at',
+        ))
+            .data
+            .rows;
+      }
       if (mounted) setState(() => _rows = rows);
     } on Object catch (error) {
       if (mounted) setState(() => _error = app.describeError(error));
@@ -811,6 +850,25 @@ class _ProductSearchSheetState extends State<_ProductSearchSheet> {
               },
             ),
           ),
+          if (widget.withCategoryFilter && _categories.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: PillTabs<String?>(
+                values: <String?>[
+                  null,
+                  for (final Category category in _categories) category.id,
+                ],
+                selected: _categoryId,
+                accent: AppInk.products,
+                labelOf: (String? id) => id == null
+                    ? l10n.commonAll
+                    : _categories.firstWhere((Category c) => c.id == id).name,
+                onChanged: (String? id) {
+                  setState(() => _categoryId = id);
+                  _run(_search.text);
+                },
+              ),
+            ),
           if (_error != null)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: Space.gutter),
