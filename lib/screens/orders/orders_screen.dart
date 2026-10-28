@@ -34,7 +34,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
   final TextEditingController _search = TextEditingController();
   Timer? _debounce;
 
-  _OrderFilters _filters = const _OrderFilters();
+  OrderFilters _filters = const OrderFilters();
 
   late final ListController<Order> _list = ListController<Order>(
     fetch: (int page) async {
@@ -70,7 +70,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
     super.dispose();
   }
 
-  void _apply(_OrderFilters next) {
+  void _apply(OrderFilters next) {
     setState(() => _filters = next);
     _list.load();
   }
@@ -85,7 +85,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
 
   Future<void> _openFilters() async {
     final AppState app = AppState.of(context);
-    final _OrderFilters? next = await showDrawer<_OrderFilters>(
+    final OrderFilters? next = await showDrawer<OrderFilters>(
       context,
       accent: AppInk.orders,
       title: app.l10n.actFilter,
@@ -291,8 +291,8 @@ class _OrderRow extends StatelessWidget {
 
 /// 筛选条件：`null` 就是「全部」，所以每个维度都有专属的 setter，
 /// 不用 copyWith 传 null（那样分不清「没改」和「清空」）。
-class _OrderFilters {
-  const _OrderFilters({
+class OrderFilters {
+  const OrderFilters({
     this.search,
     this.status,
     this.type,
@@ -311,11 +311,28 @@ class _OrderFilters {
   bool get dirty =>
       type != null || paymentStatus != null || dateFrom != null || dateTo != null;
 
-  _OrderFilters withSearch(String? value) => _rebuild(search: value);
+  // 「全部」在这些过滤里就是 null，所以必须直接赋值：写成 `value ?? this.value`
+  // 等于「null 表示没改」，切回全部时旧过滤留着不动，点上去自然没反应。
+  // 清空搜索框走的是同一支，也一样要能落回 null。
+  OrderFilters withSearch(String? value) => OrderFilters(
+        search: value,
+        status: status,
+        type: type,
+        paymentStatus: paymentStatus,
+        dateFrom: dateFrom,
+        dateTo: dateTo,
+      );
 
-  _OrderFilters withStatus(String? value) => _rebuild(status: value);
+  OrderFilters withStatus(String? value) => OrderFilters(
+        search: search,
+        status: value,
+        type: type,
+        paymentStatus: paymentStatus,
+        dateFrom: dateFrom,
+        dateTo: dateTo,
+      );
 
-  _OrderFilters replaced({String? type, String? paymentStatus}) => _OrderFilters(
+  OrderFilters replaced({String? type, String? paymentStatus}) => OrderFilters(
         search: search,
         status: status,
         type: type,
@@ -324,7 +341,7 @@ class _OrderFilters {
         dateTo: dateTo,
       );
 
-  _OrderFilters withDates(String? from, String? to) => _OrderFilters(
+  OrderFilters withDates(String? from, String? to) => OrderFilters(
         search: search,
         status: status,
         type: type,
@@ -332,21 +349,12 @@ class _OrderFilters {
         dateFrom: from,
         dateTo: to,
       );
-
-  _OrderFilters _rebuild({String? search, String? status}) => _OrderFilters(
-        search: search ?? this.search,
-        status: status ?? this.status,
-        type: type,
-        paymentStatus: paymentStatus,
-        dateFrom: dateFrom,
-        dateTo: dateTo,
-      );
 }
 
 class _OrderFilterDrawer extends StatefulWidget {
   const _OrderFilterDrawer({required this.initial, required this.l10n});
 
-  final _OrderFilters initial;
+  final OrderFilters initial;
   final L10n l10n;
 
   @override
@@ -354,7 +362,7 @@ class _OrderFilterDrawer extends StatefulWidget {
 }
 
 class _OrderFilterDrawerState extends State<_OrderFilterDrawer> {
-  late _OrderFilters _draft = widget.initial;
+  late OrderFilters _draft = widget.initial;
 
   Future<void> _pickDate({required bool from}) async {
     final DateTime? picked = await showDatePicker(
