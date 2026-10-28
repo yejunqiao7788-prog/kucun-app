@@ -486,8 +486,12 @@ class L10n {
   String get aiEmptyHint => raw('ai_empty_hint');
   String get aiEmptyTitle => raw('ai_empty_title');
   String get aiGoLookup => raw('ai_go_lookup');
+  String get aiHistoryShort => raw('ai_history_short');
   String get aiKeyMissing => raw('ai_key_missing');
   String get aiListening => raw('ai_listening');
+  String get aiLocalHint => raw('ai_local_hint');
+  String get aiLogsTitle => raw('ai_logs_title');
+  String get aiLowStockTitle => raw('ai_low_stock_title');
   String get aiLookupExample => raw('ai_lookup_example');
   String get aiLookupHint => raw('ai_lookup_hint');
   String get aiMicUnavailable => raw('ai_mic_unavailable');
@@ -503,6 +507,8 @@ class L10n {
   String get aiTabChat => raw('ai_tab_chat');
   String get aiTabLookup => raw('ai_tab_lookup');
   String get aiThinking => raw('ai_thinking');
+  String get aiTodayOrders => raw('ai_today_orders');
+  String get aiValueTitle => raw('ai_value_title');
   String get finAllMethods => raw('fin_all_methods');
   String get finAllSettled => raw('fin_all_settled');
   String get finAnonDebtNote => raw('fin_anon_debt_note');
@@ -517,6 +523,7 @@ class L10n {
   String get finOverview => raw('fin_overview');
   String get finPayHistory => raw('fin_pay_history');
   String get finPlanMonthly => raw('fin_plan_monthly');
+  String get finPlanQuarterly => raw('fin_plan_quarterly');
   String get finPlanYearly => raw('fin_plan_yearly');
   String get finRange => raw('fin_range');
   String get finRangeDefault => raw('fin_range_default');
@@ -668,6 +675,7 @@ class L10n {
   String get setRoleTenantAdmin => raw('set_role_tenant_admin');
   String get setRoleUser => raw('set_role_user');
   String get setSignOutConfirm => raw('set_sign_out_confirm');
+  String get setSubNote => raw('set_sub_note');
   String get setTeam => raw('set_team');
   String get setTeamNote => raw('set_team_note');
   String get mpActions => raw('mp_actions');

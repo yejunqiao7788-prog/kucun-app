@@ -93,8 +93,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 icon: Icons.lock_clock_rounded,
               ),
               const VGap(12),
-              const _RenewalCard(),
             ],
+            const _RenewalCard(),
+            const VGap(14),
             _AccountCard(profile: profile),
             if (app.canOpenModule(ModuleKey.dashboard)) ...<Widget>[
               const VGap(14),
@@ -781,7 +782,8 @@ class _SignOutCard extends StatelessWidget {
   }
 }
 
-/// 到期续费：与财务模块同一套服务端票据，但不依赖经营权限位。
+/// 订阅与续费：与财务模块同一套服务端票据，但不依赖经营权限位。
+/// 未到期时常驻「我的」，与网页端的订阅页同位；到期后它就是唯一的解锁入口。
 class _RenewalCard extends StatefulWidget {
   const _RenewalCard();
 
@@ -802,18 +804,30 @@ class _RenewalCardState extends State<_RenewalCard> {
   }
 
   @override
+  void dispose() {
+    _plans.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final L10n l10n = _app.l10n;
+    final bool expired = _app.profile.subscriptionExpired;
+    final Color accent = expired ? AppInk.danger : AppInk.finance;
     return AnimatedBuilder(
       animation: _plans,
       builder: (BuildContext context, Widget? child) {
         final PlanBoard? board = _plans.value;
         return AppCard(
-          accent: AppInk.danger,
+          accent: accent,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              SectionHeader(title: l10n.finPlans, subtitle: l10n.setRenewNote, accent: AppInk.danger),
+              SectionHeader(
+                title: l10n.finPlans,
+                subtitle: expired ? l10n.setRenewNote : l10n.setSubNote,
+                accent: accent,
+              ),
               if (_plans.loading && board == null)
                 const SkeletonList(count: 2, itemHeight: 56)
               else if (_plans.errorText != null && board == null)
@@ -935,6 +949,7 @@ class _PlanTile extends StatelessWidget {
 
   static String _planLabel(String planType, L10n l10n) => switch (planType) {
         'monthly' => l10n.finPlanMonthly,
+        'quarterly' => l10n.finPlanQuarterly,
         'yearly' => l10n.finPlanYearly,
         _ => planType,
       };

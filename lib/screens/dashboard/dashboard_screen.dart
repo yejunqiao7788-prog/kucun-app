@@ -169,6 +169,8 @@ class _Greeting extends StatelessWidget {
       children: <Widget>[
         Text(
           l10n.dashHello(name),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
           style: const TextStyle(
             fontSize: AppType.huge,
             fontWeight: AppType.heavy,
@@ -176,7 +178,12 @@ class _Greeting extends StatelessWidget {
           ),
         ),
         const VGap(4),
-        Text(tenant, style: Theme.of(context).textTheme.bodyMedium),
+        Text(
+          tenant,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(context).textTheme.bodyMedium,
+        ),
       ],
     );
   }

@@ -39,6 +39,10 @@ class _MarketScreenState extends State<MarketScreen> {
   late final AppState _app = context.read<AppState>();
   int _tab = 0;
 
+  /// IndexedStack 会把六个签一起构建，一起构建就是一起发请求：投放和表现这两支
+  /// 服务端最慢的接口因此总被前面几支挤掉。签位首次被打开才真正挂载。
+  final Set<int> _visited = <int>{0};
+
   late final ValueLoader<JsonMap> _config =
       ValueLoader<JsonMap>(() => _app.repos.market.config());
 
@@ -117,7 +121,7 @@ class _MarketScreenState extends State<MarketScreen> {
                   5 => l10n.mpStore,
                   _ => l10n.mpSupply,
                 },
-                onChanged: (int value) => setState(() => _tab = value),
+                onChanged: _openTab,
               ),
             ),
             const VGap(12),
@@ -125,12 +129,15 @@ class _MarketScreenState extends State<MarketScreen> {
               child: IndexedStack(
                 index: _tab,
                 children: <Widget>[
-                  _SupplyTab(onOpenTab: (int index) => setState(() => _tab = index)),
-                  _LeadsTab(),
-                  _ChatsTab(chatEnabled: _config.value?.asBool('chat_enabled', fallback: true) ?? true),
-                  const _CampaignsTab(),
-                  const _AnalyticsTab(),
-                  _StoreTab(config: _config),
+                  _SupplyTab(onOpenTab: _openTab),
+                  _tabWidget(1, _LeadsTab()),
+                  _tabWidget(
+                    2,
+                    _ChatsTab(chatEnabled: _config.value?.asBool('chat_enabled', fallback: true) ?? true),
+                  ),
+                  _tabWidget(3, const _CampaignsTab()),
+                  _tabWidget(4, const _AnalyticsTab()),
+                  _tabWidget(5, _StoreTab(config: _config)),
                 ],
               ),
             ),
@@ -139,6 +146,22 @@ class _MarketScreenState extends State<MarketScreen> {
       ),
     );
   }
+
+  void _openTab(int value) => setState(() {
+        _tab = value;
+        _visited.add(value);
+      });
+
+  Widget _tabWidget(int index, Widget child) =>
+      _visited.contains(index) ? child : const _TabPlaceholder();
+}
+
+/// 没被打开过的签不构建，也就不发请求；切过去才挂载，加载态交给签自己。
+class _TabPlaceholder extends StatelessWidget {
+  const _TabPlaceholder();
+
+  @override
+  Widget build(BuildContext context) => const SizedBox.shrink();
 }
 
 // ———————————————————————————————— 选品 / 供给

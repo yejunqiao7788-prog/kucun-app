@@ -24,17 +24,20 @@ import '../../shell/module_registry.dart';
 import '../../state/app_state.dart';
 import '../../state/value_loader.dart';
 import '../orders/order_detail_screen.dart';
+import 'local_query_engine.dart';
 
 /// AI 模块只做两件事，且两套真相不混用。
 ///
 /// 「问答」把最近若干轮对话交给服务端 `/ai/chat`；模型、密钥、温度都握在超管手里，
 /// App 没有任何输入密钥的入口，配置读不到就只解释原因、不给输入框。
-/// 「速查」走 `/assist/query`，返回的是系统里的真实订单/商品/日志行，不是模型写的字，
-/// 所以它和问答分开两个签，避免把「AI 说」当成「系统有」。
+/// 「速查」走本地引擎（`local_query_engine.dart`，复刻原项目 ai_local.ts）：
+/// 正则认意图，数据从库存/订单/日志接口现取现算，返回的都是系统里的真实行，
+/// 不经过模型、也不需要模型密钥 —— 问答被锁时它照常工作。
 ///
 /// 输入框上方常驻一排快捷发送：问答那边是服务端 `quick_prompts`（没配就用本地兜底的用法
-/// 问题，绝不放需要家底数据的问题，模型手里没有），速查这边是今日出库/今日入库/昨天的订单，
-/// 发出去的都是正则兜底认得的中文原文。
+/// 问题，绝不放需要家底数据的问题，模型手里没有），速查这边是库存统计/库存预警/
+/// 今日出库/今日入库/操作记录/历史订单（最后一项先选日期），
+/// 发出去的都是引擎认得的中文原文。
 ///
 /// 语音有两条通道：系统听写（`speech_to_text`，边说边出字）和服务端录音转写
 /// （录一段 m4a 交给 `/speech/transcribe`）。后者是原项目就给 Web Speech 不可用设备留的
@@ -58,13 +61,11 @@ class _AiScreenState extends State<AiScreen> {
   final List<_Turn> _turns = <_Turn>[];
   bool _sending = false;
 
-  JsonMap? _lookup;
+  late final LocalQueryEngine _engine = LocalQueryEngine(_repos);
+  LocalQuery? _lastQuery;
+  LocalResult? _lookup;
   bool _looking = false;
   String? _lookupError;
-
-  /// 服务端按日期返回全部单据，不替用户区分出入库；这一位记住「这次问的是哪一类」，
-  /// 行数据和条数都按它来筛，界面上就不会把入库算进出库。
-  OrderType? _typeFilter;
 
   final SpeechToText _stt = SpeechToText();
   bool _sttInitialised = false;
@@ -154,20 +155,19 @@ class _AiScreenState extends State<AiScreen> {
     _scrollToEnd();
   }
 
-  Future<void> _lookupNow(String utterance, {OrderType? only}) async {
-    final String text = utterance.trim();
-    if (text.isEmpty || _looking) return;
+  Future<void> _runLocal(LocalQuery query) async {
+    if (query.text.trim().isEmpty || _looking) return;
     _input.clear();
     setState(() {
       _looking = true;
       _lookupError = null;
-      _typeFilter = only ?? _typeIn(text);
+      _lastQuery = query;
     });
+    LocalResult? result;
     String? failure;
-    JsonMap? result;
     final AppState state = AppState.of(context);
     try {
-      result = await _repos.ai.assistQuery(text);
+      result = await _engine.run(query, today: DateTime.now());
     } on Object catch (error) {
       failure = state.describeError(error);
     }
@@ -179,61 +179,61 @@ class _AiScreenState extends State<AiScreen> {
     });
   }
 
-  /// 意图解析的正则兜底只认中文，所以快捷发送发的是写死的中文原文，界面只展示本地化标签。
+  /// 「历史订单」按钮先落日期再发，发出去的仍是引擎认得的 `历史订单:YYYY-MM-DD`。
+  Future<void> _pickHistoryDate() async {
+    final DateTime now = DateTime.now();
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: now,
+      firstDate: DateTime(now.year - 2),
+      lastDate: now,
+    );
+    if (picked == null || !mounted) return;
+    await _runLocal(LocalQuery('历史订单:${Fmt.isoDate(picked)}', only: OrderType.outbound));
+  }
+
+  /// 意图解析的正则只认中文，所以快捷发送发的是写死的中文原文，界面只展示本地化标签。
   /// 问答那边交给模型的是用法问题，不是家底问题 —— `/ai/chat` 手里没有租户数据。
   List<_Shortcut> _shortcuts(L10n l10n) {
     if (_tab == 0) {
       final List<String> server = _config.value?.quickPrompts ?? const <String>[];
       if (server.isNotEmpty) {
-        return server.map((String prompt) => _Shortcut(prompt, prompt)).toList(growable: false);
+        return server
+            .map((String prompt) => _Shortcut(prompt, LocalQuery(prompt)))
+            .toList(growable: false);
       }
       return <_Shortcut>[
-        _Shortcut(l10n.aiQCanDo, l10n.aiQCanDo),
-        _Shortcut(l10n.aiQOrderStates, l10n.aiQOrderStates),
-        _Shortcut(l10n.aiQHowExport, l10n.aiQHowExport),
+        _Shortcut(l10n.aiQCanDo, LocalQuery(l10n.aiQCanDo)),
+        _Shortcut(l10n.aiQOrderStates, LocalQuery(l10n.aiQOrderStates)),
+        _Shortcut(l10n.aiQHowExport, LocalQuery(l10n.aiQHowExport)),
       ];
     }
     return <_Shortcut>[
-      _Shortcut(l10n.dashOutToday, '今日出库', only: OrderType.outbound),
-      _Shortcut(l10n.dashInToday, '今日入库', only: OrderType.inbound),
-      _Shortcut(l10n.aiQYesterday, '昨天的订单'),
+      _Shortcut(l10n.aiValueTitle, const LocalQuery('库存统计')),
+      _Shortcut(l10n.aiLowStockTitle, const LocalQuery('库存预警')),
+      _Shortcut(l10n.dashOutToday, const LocalQuery('今日出库', only: OrderType.outbound)),
+      _Shortcut(l10n.dashInToday, const LocalQuery('今日入库', only: OrderType.inbound)),
+      _Shortcut(l10n.aiLogsTitle, const LocalQuery('操作记录')),
+      _Shortcut(l10n.aiHistoryShort, const LocalQuery('历史订单'), history: true),
     ];
   }
 
   void _applyShortcut(_Shortcut shortcut) {
     if (_tab == 0) {
-      _ask(shortcut.text);
+      _ask(shortcut.query.text);
+    } else if (shortcut.history) {
+      _pickHistoryDate();
     } else {
-      _lookupNow(shortcut.text, only: shortcut.only);
+      _runLocal(shortcut.query);
     }
   }
-
-  /// 手打和语音没有按钮那份现成的意图，只能从原文认关键词。
-  OrderType? _typeIn(String text) {
-    if (text.contains('出库') || text.contains('出货') || text.contains('发货') || text.contains('outbound')) {
-      return OrderType.outbound;
-    }
-    if (text.contains('入库') || text.contains('到货') || text.contains('inbound')) {
-      return OrderType.inbound;
-    }
-    return null;
-  }
-
-  List<JsonMap> _keepType(List<JsonMap> rows) {
-    final OrderType? want = _typeFilter;
-    if (want == null) return rows;
-    return rows.where((JsonMap row) => Order(row.json).type == want).toList(growable: false);
-  }
-
-  String _countNote(L10n l10n, JsonMap result, List<JsonMap> rows) =>
-      l10n.aiCountOrders(_typeFilter == null ? result.asIntOr('count', 0) : rows.length);
 
   /// 底部那条空白原本是「快捷问句只来自服务端」留下的：超管没配 quick_prompts，
   /// 列表里就一颗按钮都没有。快捷发送因此改挂在输入框上方，本地兜底一组按钮。
-  /// 只在当前签真能用时才出现 —— 给一排点不动的按钮比不给更糟。
+  /// 速查走本地引擎，不依赖配置 —— 只有问答在模块被关或缺密钥时才锁。
   Widget? _stripIfUsable(AiConfig? config) {
-    if (config == null || !config.enabled) return null;
-    if (_tab == 0 && !config.usable) return null;
+    if (config != null && !config.enabled) return null;
+    if (_tab == 0 && config != null && !config.usable) return null;
     return _shortcutStrip();
   }
 
@@ -320,7 +320,7 @@ class _AiScreenState extends State<AiScreen> {
         if (!mounted) return;
         setState(() => _listening = false);
         if (_tab == 1) {
-          _lookupNow(words);
+          _runLocal(LocalQuery(words));
         } else {
           _ask(words);
         }
@@ -432,7 +432,7 @@ class _AiScreenState extends State<AiScreen> {
     _input.text = words;
     _input.selection = TextSelection.collapsed(offset: words.length);
     if (_tab == 1) {
-      _lookupNow(words);
+      _runLocal(LocalQuery(words));
     } else {
       _ask(words);
     }
@@ -502,13 +502,19 @@ class _AiScreenState extends State<AiScreen> {
               ),
             ),
           ),
-          if (_config.loading && config == null)
-            const Expanded(child: SkeletonList(count: 3, itemHeight: 70))
-          else if (_config.errorText != null && config == null)
-            Expanded(child: AppErrorView(message: _config.errorText!, onRetry: _config.load))
-          else if (config != null && !config.enabled)
+          if (config != null && !config.enabled)
+            // 超管把模块整个关了：没有数据可查，也没有模型可问，只剩解释和反馈。
             Expanded(child: _NotConfigured(config: config, l10n: l10n))
-          else if (config != null && !config.usable && _tab == 0)
+          else if (_tab == 1)
+            // 速查走本地引擎：配置在途或拉不到都不挡路，它只要业务接口活着。
+            Expanded(child: _buildLookup(l10n))
+          else if (_config.loading && config == null)
+            const Expanded(child: SkeletonList(count: 3, itemHeight: 70))
+          else if (config == null)
+            Expanded(
+              child: AppErrorView(message: _config.errorText ?? l10n.commonErrorTitle, onRetry: _config.load),
+            )
+          else if (!config.usable)
             // 缺的是模型密钥，不是速查：问答锁掉，速查照常走真实记录。
             Expanded(
               child: _NotConfigured(
@@ -517,10 +523,8 @@ class _AiScreenState extends State<AiScreen> {
                 onLookup: () => setState(() => _tab = 1),
               ),
             )
-          else if (config == null)
-            const Expanded(child: SkeletonList(count: 3, itemHeight: 70))
           else
-            Expanded(child: _tab == 0 ? _buildChat(l10n) : _buildLookup(l10n)),
+            Expanded(child: _buildChat(l10n)),
           _Composer(
             controller: _input,
             focusNode: _focus,
@@ -531,7 +535,7 @@ class _AiScreenState extends State<AiScreen> {
             sendLabel: l10n.aiSend,
             voiceTooltip: _recording ? l10n.actDone : l10n.aiVoice,
             shortcuts: _recording ? _recordingStrip(l10n) : _stripIfUsable(config),
-            onSend: () => _tab == 0 ? _ask(_input.text) : _lookupNow(_input.text),
+            onSend: () => _tab == 0 ? _ask(_input.text) : _runLocal(LocalQuery(_input.text)),
             onMic: _toggleMic,
           ),
         ],
@@ -582,78 +586,127 @@ class _AiScreenState extends State<AiScreen> {
             icon: Icons.search_rounded,
             accent: AppInk.ai,
           ),
-        if (!_looking && _lookup != null) ..._renderLookup(_lookup!, l10n),
+        if (!_looking && _lookup != null) ..._renderResult(_lookup!, l10n),
       ],
     );
   }
 
-  List<Widget> _renderLookup(JsonMap result, L10n l10n) {
-    switch (result.asStringOr('intent', '')) {
-      case 'date_orders':
-        final List<JsonMap> rows =
-            _keepType(JsonMap.listOf(result.raw('orders'), const <String>[]));
-        return _orderRows(
-          l10n,
-          title: '${result.asStringOr('dateFrom', '—')} → ${result.asStringOr('dateTo', '—')}',
-          note: _countNote(l10n, result, rows),
-          orders: rows,
-        );
-      case 'customer_orders':
-        final List<JsonMap> orders = JsonMap.listOf(result.raw('orders'), const <String>[]);
-        final JsonMap matched = result.asMap('matched');
-        final List<JsonMap> customers = JsonMap.listOf(result.raw('customers'), const <String>[]);
-        final String who =
-            matched.asStringOr('name', customers.isEmpty ? '' : customers.first.asStringOr('name', ''));
-        if (orders.isEmpty) {
-          final List<JsonMap> products = JsonMap.listOf(result.raw('fallbackProducts'), const <String>[]);
-          if (products.isEmpty) return <Widget>[_notFound(l10n, who)];
-          return _productRows(l10n, note: who, products: products);
-        }
-        final List<JsonMap> rows = _keepType(orders);
-        return _orderRows(
-          l10n,
-          title: who,
-          note: _countNote(l10n, result, rows),
-          orders: rows,
-        );
-      case 'notes_search':
-        final List<JsonMap> rows =
-            _keepType(JsonMap.listOf(result.raw('orders'), const <String>[]));
-        return _orderRows(
-          l10n,
-          title: result.asStringOr('keyword', ''),
-          note: _countNote(l10n, result, rows),
-          orders: rows,
-        );
-      case 'product_search':
-        return _productRows(
-          l10n,
-          note: result.asStringOr('keyword', ''),
-          products: JsonMap.listOf(result.raw('products'), const <String>[]),
-        );
-      case 'logs_search':
-        final List<JsonMap> logs = JsonMap.listOf(result.raw('logs'), const <String>[]);
-        if (logs.isEmpty) return <Widget>[_notFound(l10n, result.asStringOr('keyword', ''))];
+  List<Widget> _renderResult(LocalResult result, L10n l10n) {
+    final AppState app = AppState.of(context);
+    switch (result.kind) {
+      case LocalKind.stats:
         return <Widget>[
-          SectionHeader(title: l10n.dashActivity, subtitle: result.asString('keyword'), accent: AppInk.ai),
+          SectionHeader(title: l10n.aiValueTitle, accent: AppInk.inventory),
+          AppCard(
+            accent: AppInk.inventory,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Column(
+              children: <Widget>[
+                KeyValueRow(label: l10n.dashProducts, value: result.stats['products'] ?? '0'),
+                KeyValueRow(label: l10n.dashStockQty, value: result.stats['qty'] ?? '0'),
+                KeyValueRow(
+                  label: l10n.dashStockValue,
+                  value: Fmt.money(
+                    double.tryParse(result.stats['value'] ?? '') ?? 0,
+                    symbol: app.profile.currencySymbol,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ];
+      case LocalKind.low:
+        if (result.products.isEmpty) {
+          return <Widget>[
+            SectionHeader(title: l10n.aiLowStockTitle, accent: AppInk.showroom),
+            AppEmpty(
+              title: l10n.commonEmptyTitle,
+              hint: l10n.aiLookupHint,
+              icon: Icons.inventory_2_rounded,
+              accent: AppInk.success,
+            ),
+          ];
+        }
+        return <Widget>[
+          SectionHeader(
+            title: l10n.aiLowStockTitle,
+            subtitle: l10n.aiCountOrders(result.count),
+            accent: AppInk.showroom,
+          ),
+          AppCard(
+            accent: AppInk.showroom,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: Column(
+              children: result.products
+                  .map(
+                    (InventoryRow row) => TileRow(
+                      icon: Icons.inventory_2_rounded,
+                      accent: AppInk.showroom,
+                      title: row.name,
+                      subtitle: '${row.sku} · ${Fmt.count(row.quantity)} / ${l10n.prodMinStock} ${Fmt.count(row.minStock)}'
+                          '${row.location == null ? '' : ' · ${row.location}'}',
+                      trailing: StatusPill(
+                        label: row.quantity <= 0 ? l10n.invOutOf : l10n.invLow,
+                        color: row.quantity <= 0 ? AppInk.danger : AppInk.showroom,
+                        dense: true,
+                      ),
+                    ),
+                  )
+                  .toList(growable: false),
+            ),
+          ),
+        ];
+      case LocalKind.orders:
+        // 快捷按钮之外还认手打的「出库/入库」字样：类型筛选落在展示层，引擎给的是当天全部单据。
+        final OrderType? want = _lastQuery?.only;
+        final List<Order> rows = want == null
+            ? result.orders
+            : result.orders.where((Order o) => o.type == want).toList(growable: false);
+        return _orderRows(
+          l10n,
+          title: result.title,
+          note: l10n.aiCountOrders(want == null ? result.count : rows.length),
+          orders: rows,
+        );
+      case LocalKind.products:
+        return _productRows(l10n, note: result.note, rows: result.products);
+      case LocalKind.logs:
+        if (result.logs.isEmpty) return <Widget>[_notFound(l10n, result.note)];
+        return <Widget>[
+          SectionHeader(
+            title: l10n.aiLogsTitle,
+            subtitle: result.note.isEmpty ? null : result.note,
+            accent: AppInk.ai,
+          ),
           AppCard(
             accent: AppInk.ai,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Column(
-              children: logs
+              children: result.logs
                   .take(15)
-                  .map((JsonMap row) => KeyValueRow(
-                        label: Fmt.dateTime(row.asDate('created_at')),
-                        value: '${row.asStringOr('action', '')} ${row.asStringOr('detail', '')}'.trim(),
+                  .map((OperationLog log) => KeyValueRow(
+                        label: Fmt.dateTime(log.createdAt),
+                        value: log.actor.isEmpty
+                            ? '${log.action} · ${log.detail}'.trim()
+                            : '${log.actor} · ${log.action}',
                       ))
                   .toList(growable: false),
             ),
           ),
         ];
-      default:
-        final String answer = result.asStringOr('answer', '');
-        if (answer.isEmpty) return <Widget>[_notFound(l10n, '')];
-        return <Widget>[const VGap(6), _Bubble(turn: _Turn.answer(answer))];
+      case LocalKind.hint:
+        return <Widget>[
+          const VGap(6),
+          _Bubble(turn: _Turn.answer(l10n.aiLocalHint)),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: <Widget>[
+              for (final _Shortcut item in _shortcuts(l10n).skip(1))
+                _PromptChip(label: item.label, onTap: () => _applyShortcut(item)),
+            ],
+          ),
+        ];
     }
   }
 
@@ -668,7 +721,7 @@ class _AiScreenState extends State<AiScreen> {
     L10n l10n, {
     required String title,
     required String note,
-    required List<JsonMap> orders,
+    required List<Order> orders,
   }) {
     if (orders.isEmpty) {
       return <Widget>[SectionHeader(title: title, subtitle: note, accent: AppInk.orders), _notFound(l10n, '')];
@@ -682,14 +735,13 @@ class _AiScreenState extends State<AiScreen> {
         child: Column(
           children: orders
               .take(20)
-              .map((JsonMap row) {
-                final Order order = Order(row.json);
+              .map((Order order) {
                 final bool inbound = order.type == OrderType.inbound;
                 return TileRow(
                   icon: inbound ? Icons.south_west_rounded : Icons.north_east_rounded,
                   accent: AppInk.orders,
                   title: '${order.orderNumber} · ${order.customerName}',
-                  // 单据类型写在行上：速查一次给的是当天全部单据，不标出来就会把入库读成出库。
+                  // 单据类型写在行上：按日期查的一次给的是当天全部单据，不标出来就会把入库读成出库。
                   subtitle: '${inbound ? l10n.ordInbound : l10n.ordOutbound} · '
                       '${Fmt.date(Fmt.parseIsoDate(order.orderDate))} · '
                       '${Fmt.count(order.totalQuantity)}',
@@ -706,30 +758,24 @@ class _AiScreenState extends State<AiScreen> {
     ];
   }
 
-  List<Widget> _productRows(L10n l10n, {required String note, required List<JsonMap> products}) {
-    if (products.isEmpty) return <Widget>[_notFound(l10n, note)];
-    final AppState app = AppState.of(context);
+  List<Widget> _productRows(L10n l10n, {required String note, required List<InventoryRow> rows}) {
+    if (rows.isEmpty) return <Widget>[_notFound(l10n, note)];
     return <Widget>[
       SectionHeader(title: l10n.aiProducts, subtitle: note, accent: AppInk.products),
       AppCard(
         accent: AppInk.products,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         child: Column(
-          children: products
-              .take(20)
-              .map((JsonMap row) {
-                final Product product = Product(row.json);
-                return TileRow(
+          children: rows
+              .map(
+                (InventoryRow row) => TileRow(
                   icon: Icons.inventory_2_rounded,
                   accent: AppInk.products,
-                  title: product.name,
-                  subtitle: '${product.sku} · ${Fmt.count(product.quantity)}',
-                  trailing: Text(
-                    Fmt.money(product.price, symbol: app.profile.currencySymbol),
-                    style: const TextStyle(fontWeight: AppType.semi),
-                  ),
-                );
-              })
+                  title: row.name,
+                  subtitle: '${row.sku} · ${Fmt.count(row.quantity)} ${row.unit}'
+                      '${row.location == null || row.location!.isEmpty ? '' : ' · ${row.location}'}',
+                ),
+              )
               .toList(growable: false),
         ),
       ),
@@ -738,16 +784,16 @@ class _AiScreenState extends State<AiScreen> {
 }
 
 class _Shortcut {
-  const _Shortcut(this.label, this.text, {this.only});
+  const _Shortcut(this.label, this.query, {this.history = false});
 
   /// 按钮上给用户看的字，走本地化。
   final String label;
 
-  /// 真正发出去的字：数据类问句必须是中文原文，正则兜底才认。
-  final String text;
+  /// 真正发出去的问题：数据类问句必须是中文原文，引擎的正则才认。
+  final LocalQuery query;
 
-  /// 速查按日期拿到的是当天全部单据，这一位说明只想要哪一类。
-  final OrderType? only;
+  /// 「历史订单」先落日期，再拼成 `历史订单:YYYY-MM-DD` 发给引擎。
+  final bool history;
 }
 
 class _Turn {

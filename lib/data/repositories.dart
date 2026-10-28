@@ -69,11 +69,11 @@ class DashboardRepo {
     );
   }
 
-  Future<Paged<OperationLog>> logs({int page = 1, int pageSize = 20}) async {
+  Future<Paged<OperationLog>> logs({int page = 1, int pageSize = 20, String? search}) async {
     final Object? data = await _get(
       api,
       '/dashboard/logs',
-      query: <String, Object?>{'page': page, 'pageSize': pageSize},
+      query: <String, Object?>{'page': page, 'pageSize': pageSize, 'search': search},
       tenant: tenant,
     );
     return Paged.of<OperationLog>(data, OperationLog.new);
@@ -742,11 +742,12 @@ class MarketRepo {
         '/marketplace/analytics',
         query: <String, Object?>{'days': days},
         tenant: tenant,
+        heavy: true,
       )).json);
 
   /// 顶层是 `{items, total, ad, priced, base_lead_minor, currency, warnings}`，不是裸数组。
   Future<MpCampaignPage> campaigns() async => MpCampaignPage(
-      JsonMap.from(await _get(api, '/marketplace/campaigns', tenant: tenant)).json);
+      JsonMap.from(await _get(api, '/marketplace/campaigns', tenant: tenant, heavy: true)).json);
 
   /// 只支持 `kind: "cpl"`；两枚金额都是最小货币单位整数（₴ 的分位）：
   /// `daily_cap_minor` 必填、`total_budget_minor` 留空即「不设上限」，
@@ -926,13 +927,6 @@ class AiRepo {
             heavy: true,
           )
           .then((Object? data) => JsonMap.from(data).asStringOr('text', ''));
-
-  /// 自然语言查订单/商品/日志：键名是 `query`，出参按 `intent` 分支。
-  Future<JsonMap> assistQuery(String utterance) async => JsonMap.from(await api.post(
-        '/assist/query',
-        body: <String, Object?>{'query': utterance},
-        tenantId: tenant(),
-      ));
 }
 
 class SettingsRepo {

@@ -1231,9 +1231,10 @@ class _WalletTabState extends State<_WalletTab> {
         _ => tier,
       };
 
-  /// 服务端价目表只有月/年两档可买，trial 是注册时发的，不会出现在这里。
+  /// 服务端价目表是月/季/年三档，trial 是注册时发的，不会出现在这里。
   static String _planLabel(String planType, L10n l10n) => switch (planType) {
         'monthly' => l10n.finPlanMonthly,
+        'quarterly' => l10n.finPlanQuarterly,
         'yearly' => l10n.finPlanYearly,
         'trial' => l10n.setSubTrial,
         _ => planType,
