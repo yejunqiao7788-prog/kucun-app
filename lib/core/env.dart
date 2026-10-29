@@ -42,5 +42,6 @@ class Env {
   static const Duration heavyTimeout = Duration(seconds: 60);
 
   static const String appName = 'TorgSeek库存';
-  static const String appVersion = '2.0.0';
+  // 改版本号时和 pubspec.yaml 的 version 一起改，设置页底部读的是这里。
+  static const String appVersion = '2.1.1';
 }

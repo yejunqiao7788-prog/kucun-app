@@ -540,19 +540,28 @@ class WalletAccount extends JsonMap {
 
 /// 订阅价目表：`{default_channel, channels:{monobank:{...plans[]}, paddle:{...plans[]}}}`。
 /// `channels` 是对象不是数组，逐通道摊平成行给界面用。
+/// 通道这一层不能省：`/wallet/plans` 是扁平的，套它的读法会永远读不到档位。
 class PlanBoard extends JsonMap {
   const PlanBoard(super.json);
 
   String? get defaultChannel => asString('default_channel');
 
+  JsonMap get _channels => asMap('channels');
+
+  PlanChannel _row(String name) {
+    final JsonMap raw = _channels.asMap(name);
+    // 别名要在判空之后才补：先补进 map 就再没有「服务端没发这条」的形状了。
+    return raw.json.isEmpty
+        ? const PlanChannel(<String, Object?>{})
+        : PlanChannel(<String, Object?>{...raw.json, 'channel': name});
+  }
+
   List<PlanChannel> get channels => <String>['monobank', 'paddle']
-      .map((String name) => PlanChannel(
-          <String, Object?>{...asMap(name).json, 'channel': name}))
+      .map(_row)
       .where((PlanChannel row) => row.json.isNotEmpty)
       .toList(growable: false);
 
-  PlanChannel channel(String name) =>
-      PlanChannel(<String, Object?>{...asMap(name).json, 'channel': name});
+  PlanChannel channel(String name) => _row(name);
 
   /// 服务端算好的那一条：没有它就不该出现默认选中的通道。
   PlanChannel? get payableDefault {
