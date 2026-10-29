@@ -789,6 +789,7 @@ class L10n {
   String get setRoleUser => raw('set_role_user');
   String get setSignOutConfirm => raw('set_sign_out_confirm');
   String get setSubNote => raw('set_sub_note');
+  String setSubExpiring(Object n) => fill('set_sub_expiring', <String, Object>{'n': n});
   String get setTeam => raw('set_team');
   String get setTeamNote => raw('set_team_note');
   String get mpActions => raw('mp_actions');

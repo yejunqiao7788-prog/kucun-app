@@ -59,11 +59,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// 打码开关也归页面：滑走再滑回来不该偷偷重新遮上。
   bool _revealed = false;
 
+  /// 价目表只在真的要续费时才拉：离到期还远的租户这一页不摆付费位，
+  /// 也就不该每次进「我的」都发一次用不上的请求。
+  bool _plansRequested = false;
+
   @override
   void initState() {
     super.initState();
     unawaited(_numbers.load());
-    unawaited(_plans.load());
   }
 
   @override
@@ -73,8 +76,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.dispose();
   }
 
+  void _maybeLoadPlans(bool needed) {
+    if (!needed || _plansRequested) return;
+    _plansRequested = true;
+    // build 里直接 load 会在这一帧就 notifyListeners，排到帧尾再发。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(_plans.load());
+    });
+  }
+
   Future<void> _refreshAll() async {
     await _app.refreshProfileQuietly();
+    if (!_plansRequested) return _numbers.refresh();
     await Future.wait<void>(<Future<void>>[_numbers.refresh(), _plans.refresh()]);
   }
 
@@ -89,6 +102,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final AppState app = context.watch<AppState>();
     final L10n l10n = app.l10n;
     final UserProfile profile = app.profile;
+    // 到期待续费（含已到期）才在页顶摆付费位；平时价目表留在财务的「钱包与订阅」里。
+    final bool renewNow = profile.shouldPromptRenewal;
+    _maybeLoadPlans(renewNow);
 
     return SafeArea(
       child: RefreshIndicator(
@@ -112,8 +128,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               const VGap(12),
             ],
-            _RenewalCard(plans: _plans, onOpen: _openSubscription),
-            const VGap(14),
+            if (renewNow) ...<Widget>[
+              _RenewalCard(
+                plans: _plans,
+                onOpen: _openSubscription,
+                daysLeft: profile.subscriptionExpired ? null : profile.daysUntilExpiry,
+              ),
+              const VGap(14),
+            ],
             _AccountCard(profile: profile),
             if (app.canOpenModule(ModuleKey.dashboard)) ...<Widget>[
               const VGap(14),
@@ -812,12 +834,16 @@ class _SignOutCard extends StatelessWidget {
 }
 
 /// 订阅与续费：价目表仍由服务端提供，但付款动作在网页端完成。
-/// 未到期时常驻「我的」，与网页端的订阅页同位；到期后它就是唯一的解锁入口。
+/// 只有已到期或 30 天内到期的租户才在「我的」顶上看到这张卡（`profile.expiringSoon`），
+/// 平时这一页不摆付费位；到期后它是唯一的解锁入口，必须在设置页内完成，不能跳去财务模块。
 class _RenewalCard extends StatelessWidget {
-  const _RenewalCard({required this.plans, required this.onOpen});
+  const _RenewalCard({required this.plans, required this.onOpen, required this.daysLeft});
 
   final ValueLoader<PlanBoard> plans;
   final Future<void> Function() onOpen;
+
+  /// 还剩几天到期；已经到期或永久租户传 null。
+  final int? daysLeft;
 
   @override
   Widget build(BuildContext context) {
@@ -825,6 +851,11 @@ class _RenewalCard extends StatelessWidget {
     final L10n l10n = app.l10n;
     final bool expired = app.profile.subscriptionExpired;
     final Color accent = expired ? AppInk.danger : AppInk.finance;
+    final String note = expired
+        ? l10n.setRenewNote
+        : daysLeft == null
+            ? l10n.setSubNote
+            : l10n.setSubExpiring(daysLeft!);
     return AnimatedBuilder(
       animation: plans,
       builder: (BuildContext context, Widget? child) {
@@ -836,7 +867,7 @@ class _RenewalCard extends StatelessWidget {
             children: <Widget>[
               SectionHeader(
                 title: l10n.finPlans,
-                subtitle: expired ? l10n.setRenewNote : l10n.setSubNote,
+                subtitle: note,
                 accent: accent,
               ),
               if (plans.loading && board == null)
