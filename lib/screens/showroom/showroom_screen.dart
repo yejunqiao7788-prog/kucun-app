@@ -973,7 +973,7 @@ class _ShelfRow extends StatelessWidget {
           NumberField(
             label: l10n.shrCustomPrice,
             controller: controller,
-            suffix: currency,
+            prefix: currency,
             autofocus: true,
           ),
           const VGap(8),

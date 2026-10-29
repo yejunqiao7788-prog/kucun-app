@@ -676,7 +676,7 @@ class _ListingEditorScreenState extends State<ListingEditorScreen> {
                       NumberField(
                         label: l10n.mpPrice,
                         controller: _price,
-                        suffix: _origin?.currency ?? 'UAH',
+                        prefix: _origin?.currency ?? 'UAH',
                       ),
                       const VGap(12),
                       Row(
@@ -1851,13 +1851,13 @@ class _CampaignsTabState extends State<_CampaignsTab> {
           NumberField(
             label: l10n.mpDailyCap,
             controller: cap,
-            suffix: currency,
+            prefix: currency,
           ),
           const VGap(12),
           NumberField(
             label: l10n.mpBudget,
             controller: budget,
-            suffix: currency,
+            prefix: currency,
             hint: l10n.mpBudgetNone,
           ),
           const VGap(14),
@@ -2264,13 +2264,13 @@ class _CampaignEditorScreenState extends State<CampaignEditorScreen> {
           NumberField(
             label: l10n.mpDailyCap,
             controller: _cap,
-            suffix: widget.currency,
+            prefix: widget.currency,
           ),
           const VGap(12),
           NumberField(
             label: l10n.mpBudget,
             controller: _budget,
-            suffix: widget.currency,
+            prefix: widget.currency,
             hint: l10n.mpBudgetNone,
           ),
           const VGap(8),

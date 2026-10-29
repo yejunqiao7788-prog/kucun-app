@@ -34,8 +34,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
   late final ValueLoader<DashboardOrders> _orders =
       ValueLoader<DashboardOrders>(() async => (await _repos.dashboard.orders()).data);
   // 服务端这支只有 `limit`、没有 offset，翻页拿回来的是同一批行，所以这里不该用 ListController。
+  // 拉几条就摆几条：以前拉 8 只显示 6，那两条永远读不到，还像是丢数据。
   late final ValueLoader<List<OperationLog>> _logs =
-      ValueLoader<List<OperationLog>>(() => _repos.dashboard.logs(limit: 8));
+      ValueLoader<List<OperationLog>>(() => _repos.dashboard.logs(limit: 6));
 
   @override
   void initState() {
@@ -130,7 +131,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   style: const TextStyle(color: AppInk.textTertiary, fontSize: AppType.foot),
                 )
               else
-                ...logs.take(6).map((OperationLog log) => _LogRow(log: log, l10n: l10n)),
+                ...logs.map(
+                  (OperationLog log) => LogRowCard(
+                    log: log,
+                    l10n: l10n,
+                    currency: app.profile.currencySymbol,
+                  ),
+                ),
             ],
           ),
         ),
@@ -139,14 +146,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 }
 
-/// 一条动态：`时间 | 动作胶囊 · 商品名 / 变更明细 / 操作人`。
-/// 网页端是「图标块 + 胶囊 + 名称 + SKU 块 + 变更块 + 人·时间」六段，移动端宽度只够三段，
-/// 但动作、对象、变更、人这四层信息一个都不能少。
-class _LogRow extends StatelessWidget {
-  const _LogRow({required this.log, required this.l10n});
+/// 一条动态：`动作块 | 胶囊 + 对象名 / SKU + 逐字段变更 / 操作人 · 时间`。
+/// 网页端 `LogsSection` 是「图标块 + 胶囊 + 名称 + SKU 块 + 变更块 + 人·时间」六段。
+/// 之前移动端把最宽的 66px 左栏给了相对时间，名字被压到 190px 上限、变更压成两行省略号 ——
+/// 现在左栏换成一眼可辨的动作色块，时间落进页脚（与网页端同位），变更逐条摆开不再被截掉。
+class LogRowCard extends StatelessWidget {
+  const LogRowCard({
+    super.key,
+    required this.log,
+    required this.l10n,
+    required this.currency,
+  });
 
   final OperationLog log;
   final L10n l10n;
+  final String currency;
 
   static Color _actionColor(String operation) => switch (operation) {
         'CREATE' => AppInk.ai,
@@ -156,73 +170,110 @@ class _LogRow extends StatelessWidget {
         _ => AppInk.warning,
       };
 
+  static IconData _actionIcon(String operation) => switch (operation) {
+        'CREATE' => Icons.add_rounded,
+        'DELETE' => Icons.delete_outline_rounded,
+        'FINALIZE' => Icons.check_circle_outline_rounded,
+        'SYNC' => Icons.sync_rounded,
+        _ => Icons.edit_rounded,
+      };
+
+  /// 一次改动可能牵扯七个字段，全摆出来会把列表拉成砖墙；留 3 条，剩下的报数。
+  static const int _maxChips = 3;
+
   @override
   Widget build(BuildContext context) {
-    final String changes = logChangesLine(l10n, log);
+    final Color accent = _actionColor(log.action);
     final String sku = log.productSku;
+    final List<String> chips = logChangeChips(l10n, log, currency: currency);
+    final List<String> shown = chips.take(_maxChips).toList(growable: false);
+    final int hidden = chips.length - shown.length;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.only(bottom: 14),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          SizedBox(
-            width: 66,
-            child: Text(
-              l10n.elapsed(log.createdAt),
-              style: Theme.of(context).textTheme.bodySmall,
+          Container(
+            width: 30,
+            height: 30,
+            decoration: BoxDecoration(
+              color: AppInk.tint(accent, alpha: 0.14),
+              borderRadius: BorderRadius.circular(Radii.pill),
             ),
+            child: Icon(_actionIcon(log.action), size: 16, color: accent),
           ),
+          const HGap(10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 4,
-                  crossAxisAlignment: WrapCrossAlignment.center,
+                Row(
                   children: <Widget>[
                     StatusPill(
                       label: logActionLabel(l10n, log.action),
-                      color: _actionColor(log.action),
+                      color: accent,
                       dense: true,
                     ),
-                    ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 190),
+                    const HGap(6),
+                    Expanded(
                       child: Text(
                         log.target,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.bodyMedium,
+                        style: const TextStyle(
+                            fontSize: AppType.body, fontWeight: AppType.semi),
                       ),
                     ),
-                    if (sku.isNotEmpty && log.target != sku)
-                      Text(
-                        sku,
-                        style: const TextStyle(
-                          fontSize: AppType.foot,
-                          color: AppInk.textTertiary,
-                        ),
-                      ),
                   ],
                 ),
-                if (changes.isNotEmpty) ...<Widget>[
-                  const VGap(3),
-                  Text(
-                    changes,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: AppType.foot, color: AppInk.textSecondary),
+                if (shown.isNotEmpty || sku.isNotEmpty && log.target != sku) ...<Widget>[
+                  const VGap(5),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    children: <Widget>[
+                      if (sku.isNotEmpty && log.target != sku)
+                        _MetaChip(text: sku, muted: true),
+                      for (final String chip in shown) _MetaChip(text: chip),
+                      if (hidden > 0) _MetaChip(text: l10n.dashMoreChanges(hidden)),
+                    ],
                   ),
                 ],
-                const VGap(3),
+                const VGap(4),
                 Text(
-                  logActorLabel(l10n, log),
+                  '${logActorLabel(l10n, log)} · ${l10n.elapsed(log.createdAt)}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontSize: AppType.foot, color: AppInk.textTertiary),
                 ),
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// 变更/SKU 的小块：淡底微字，和上方的动作文案分层。
+class _MetaChip extends StatelessWidget {
+  const _MetaChip({required this.text, this.muted = false});
+
+  final String text;
+  final bool muted;
+
+  @override
+  Widget build(BuildContext context) {
+    final Color ink = muted ? AppInk.textTertiary : AppInk.textSecondary;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: AppInk.tint(ink, alpha: 0.12),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(fontSize: AppType.micro, color: ink),
       ),
     );
   }

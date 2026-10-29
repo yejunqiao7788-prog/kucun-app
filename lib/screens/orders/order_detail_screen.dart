@@ -271,11 +271,11 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     final AppState app = AppState.of(context);
     final Order? order = _order;
     if (order == null || order.type != OrderType.outbound) return;
-    final _PaymentDraft? draft = await showDrawer<_PaymentDraft>(
+    final PaymentDraft? draft = await showDrawer<PaymentDraft>(
       context,
       accent: AppInk.finance,
       title: app.l10n.ordPayment,
-      builder: (BuildContext sheetContext) => _PaymentSheet(
+      builder: (BuildContext sheetContext) => PaymentSheet(
         order: order,
         currency: app.profile.currencySymbol,
         l10n: app.l10n,
@@ -866,8 +866,8 @@ class _QuantitySheetState extends State<_QuantitySheet> {
   }
 }
 
-class _PaymentDraft {
-  const _PaymentDraft({
+class PaymentDraft {
+  const PaymentDraft({
     required this.received,
     required this.method,
     required this.paidAt,
@@ -880,9 +880,31 @@ class _PaymentDraft {
   final String notes;
 }
 
+enum PaymentHintKind { change, shortfall, exact }
+
+/// 收款抽屉里那条实时提示，规则抄网页端 `OrderPaymentDialog.tsx` 的 `hint`：
+/// 差额 = 实收 - 未收余额，用 0.005 容差判平（浮点减法不该拿 `== 0` 比），
+/// 实收还没填就整条不出。三态必须都露出来 —— 只报找零、把欠的钳成 0，
+/// 用户看着「找零 $0.00」一动不动，读起来就是这块没在刷新。
+({PaymentHintKind kind, double amount})? paymentHint({
+  required double received,
+  required double outstanding,
+}) {
+  if (received <= 0) return null;
+  final double diff = received - outstanding;
+  if (diff > 0.005) {
+    return (kind: PaymentHintKind.change, amount: diff);
+  }
+  if (diff < -0.005) {
+    return (kind: PaymentHintKind.shortfall, amount: -diff);
+  }
+  return (kind: PaymentHintKind.exact, amount: 0);
+}
+
 /// 收款抽屉：只提交实收/方式/日期/备注，找零与冲抵由服务端算。
-class _PaymentSheet extends StatefulWidget {
-  const _PaymentSheet({
+class PaymentSheet extends StatefulWidget {
+  const PaymentSheet({
+    super.key,
     required this.order,
     required this.currency,
     required this.l10n,
@@ -893,10 +915,10 @@ class _PaymentSheet extends StatefulWidget {
   final L10n l10n;
 
   @override
-  State<_PaymentSheet> createState() => _PaymentSheetState();
+  State<PaymentSheet> createState() => _PaymentSheetState();
 }
 
-class _PaymentSheetState extends State<_PaymentSheet> {
+class _PaymentSheetState extends State<PaymentSheet> {
   late final TextEditingController _received =
       TextEditingController(text: widget.order.outstandingAmount.toStringAsFixed(2));
   final TextEditingController _notes = TextEditingController();
@@ -917,6 +939,8 @@ class _PaymentSheetState extends State<_PaymentSheet> {
   Widget build(BuildContext context) {
     final L10n l10n = widget.l10n;
     final double outstanding = widget.order.outstandingAmount;
+    final ({PaymentHintKind kind, double amount})? hint =
+        paymentHint(received: _amount, outstanding: outstanding);
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -935,25 +959,41 @@ class _PaymentSheetState extends State<_PaymentSheet> {
         NumberField(
           label: l10n.ordReceived,
           controller: _received,
-          suffix: widget.currency,
+          prefix: widget.currency,
           onChanged: (_) => setState(() {}),
         ),
         const VGap(10),
-        Row(
-          children: <Widget>[
-            Text(l10n.ordChange, style: Theme.of(context).textTheme.bodyMedium),
-            const HGap(8),
-            Text(
-              Fmt.money(_amount - outstanding < 0 ? 0 : _amount - outstanding, symbol: widget.currency),
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const Spacer(),
-            TextAction(
-              label: '${l10n.ordDate} · ${Fmt.date(_paidAt)}',
-              color: AppInk.finance,
-              onPressed: _pickDate,
-            ),
-          ],
+        if (hint != null) ...<Widget>[
+          _HintBand(
+            text: switch (hint.kind) {
+              PaymentHintKind.change => l10n.ordHintChange(
+                  Fmt.money(hint.amount, symbol: widget.currency),
+                ),
+              PaymentHintKind.shortfall => l10n.ordHintShort(
+                  Fmt.money(hint.amount, symbol: widget.currency),
+                ),
+              PaymentHintKind.exact => l10n.ordHintExact,
+            },
+            color: switch (hint.kind) {
+              PaymentHintKind.change => AppInk.warning,
+              PaymentHintKind.shortfall => AppInk.danger,
+              PaymentHintKind.exact => AppInk.success,
+            },
+            icon: switch (hint.kind) {
+              PaymentHintKind.change => Icons.savings_rounded,
+              PaymentHintKind.shortfall => Icons.pending_actions_rounded,
+              PaymentHintKind.exact => Icons.check_circle_outline_rounded,
+            },
+          ),
+          const VGap(10),
+        ],
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextAction(
+            label: '${l10n.ordDate} · ${Fmt.date(_paidAt)}',
+            color: AppInk.finance,
+            onPressed: _pickDate,
+          ),
         ),
         const VGap(12),
         AppTextField(label: l10n.ordNotes, controller: _notes, hint: l10n.ordNotesHint),
@@ -964,7 +1004,7 @@ class _PaymentSheetState extends State<_PaymentSheet> {
           color: AppInk.finance,
           onPressed: _amount <= 0
               ? null
-              : () => Navigator.of(context).pop(_PaymentDraft(
+              : () => Navigator.of(context).pop(PaymentDraft(
                     received: _amount,
                     method: _method,
                     paidAt: _paidAt,
@@ -983,5 +1023,37 @@ class _PaymentSheetState extends State<_PaymentSheet> {
       lastDate: DateTime.now().add(const Duration(days: 1)),
     );
     if (picked != null) setState(() => _paidAt = picked);
+  }
+}
+
+/// 实时提示条：色底 + 图标 + 一句话，随输入逐键重算。
+class _HintBand extends StatelessWidget {
+  const _HintBand({required this.text, required this.color, required this.icon});
+
+  final String text;
+  final Color color;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppInk.tint(color, alpha: 0.12),
+        borderRadius: BorderRadius.circular(Radii.chip),
+      ),
+      child: Row(
+        children: <Widget>[
+          Icon(icon, size: 16, color: color),
+          const HGap(8),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(fontSize: AppType.foot, fontWeight: AppType.semi, color: color),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

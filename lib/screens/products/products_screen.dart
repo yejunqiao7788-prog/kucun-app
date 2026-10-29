@@ -724,7 +724,11 @@ class _PriceDrawerState extends State<_PriceDrawer> {
           controller: _value,
           allowNegative: _allowNegative,
           hint: _hintOf(l10n),
-          suffix: _mode == 'percent' || _mode == 'markup_cost' ? '%' : app.profile.currencySymbol,
+          // 百分号留右边（网页端 `%` 也在 `right-3`），货币符号搬去数字左边。
+          prefix: _mode == 'percent' || _mode == 'markup_cost'
+              ? null
+              : app.profile.currencySymbol,
+          suffix: _mode == 'percent' || _mode == 'markup_cost' ? '%' : null,
         ),
         const VGap(20),
         PrimaryButton(

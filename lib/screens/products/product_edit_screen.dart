@@ -362,7 +362,7 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
                       child: NumberField(
                         label: l10n.prodPrice,
                         controller: _price,
-                        suffix: app.profile.currencySymbol,
+                        prefix: app.profile.currencySymbol,
                       ),
                     ),
                     const HGap(10),
@@ -370,7 +370,7 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
                       child: NumberField(
                         label: l10n.prodCost,
                         controller: _cost,
-                        suffix: app.profile.currencySymbol,
+                        prefix: app.profile.currencySymbol,
                       ),
                     ),
                   ],
@@ -405,7 +405,7 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
                         child: NumberField(
                           label: l10n.prodBoxPrice,
                           controller: _boxPrice,
-                          suffix: app.profile.currencySymbol,
+                          prefix: app.profile.currencySymbol,
                         ),
                       ),
                     ],

@@ -869,7 +869,7 @@ class _DebtRowCard extends StatelessWidget {
             NumberField(
               label: l10n.finSettleAmount,
               controller: amount,
-              suffix: app.profile.currencySymbol,
+              prefix: app.profile.currencySymbol,
               autofocus: true,
             ),
             const VGap(14),

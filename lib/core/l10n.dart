@@ -175,6 +175,7 @@ class L10n {
   String get dashRecentOrders => raw('dash_recent_orders');
   String get dashPicking => raw('dash_picking');
   String get dashActivity => raw('dash_activity');
+  String dashMoreChanges(Object n) => fill('dash_more_changes', <String, Object>{'n': n});
   String get dashQuickActions => raw('dash_quick_actions');
   String get dashNoLogs => raw('dash_no_logs');
   String get dashLogSystem => raw('dash_log_system');
@@ -284,6 +285,9 @@ class L10n {
   String get ordFullyPaid => raw('ord_fully_paid');
   String get ordReceived => raw('ord_received');
   String get ordChange => raw('ord_change');
+  String ordHintChange(Object amount) => fill('ord_hint_change', <String, Object>{'amount': amount});
+  String ordHintShort(Object amount) => fill('ord_hint_short', <String, Object>{'amount': amount});
+  String get ordHintExact => raw('ord_hint_exact');
   String get ordMethod => raw('ord_method');
   String get ordVision => raw('ord_vision');
 

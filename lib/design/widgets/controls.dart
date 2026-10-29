@@ -189,6 +189,7 @@ class AppTextField extends StatelessWidget {
     this.controller,
     this.hint,
     this.keyboardType,
+    this.prefixIcon,
     this.suffix,
     this.maxLines = 1,
     this.obscure = false,
@@ -207,6 +208,7 @@ class AppTextField extends StatelessWidget {
   final TextEditingController? controller;
   final String? hint;
   final TextInputType? keyboardType;
+  final Widget? prefixIcon;
   final Widget? suffix;
   final int maxLines;
   final bool obscure;
@@ -250,7 +252,16 @@ class AppTextField extends StatelessWidget {
           onChanged: onChanged,
           onFieldSubmitted: onSubmitted,
           textInputAction: textInputAction,
-          decoration: InputDecoration(hintText: hint, suffixIcon: suffix),
+          decoration: InputDecoration(
+            hintText: hint,
+            prefixIcon: prefixIcon,
+            suffixIcon: suffix,
+            // 前缀槽默认有 48 的宽度下限（那是给图标热区留的），一个货币符号用不上，
+            // 会把数字整段推到右边、和符号拉开 30 多像素。符号是文字，槽就按文字收。
+            prefixIconConstraints: prefixIcon == null
+                ? null
+                : const BoxConstraints(minWidth: 0, minHeight: 0),
+          ),
         ),
       ],
     );
@@ -265,6 +276,7 @@ class NumberField extends StatelessWidget {
     required this.controller,
     this.allowNegative = false,
     this.allowDecimal = true,
+    this.prefix,
     this.suffix,
     this.onChanged,
     this.hint,
@@ -276,6 +288,11 @@ class NumberField extends StatelessWidget {
   final TextEditingController controller;
   final bool allowNegative;
   final bool allowDecimal;
+
+  /// 货币符号：网页端 `fields.tsx` 把它放在数字左边（`prefixIcon={symbol}`）。
+  final String? prefix;
+
+  /// 单位/百分号：网页端放右边同一个 `suffix` 槽。
   final String? suffix;
   final ValueChanged<String>? onChanged;
   final String? hint;
@@ -284,6 +301,12 @@ class NumberField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 和数字用同一条文字样式（同字号、同行高），两者的基线才落在同一个位置。
+    // 符号自成一套小字号又被竖直居中，就变成贴在数字右上角的上标 ——
+    // 看着就是「符号偏移」，而 find.text 照样查得到它。
+    final TextStyle adornment =
+        Theme.of(context).textTheme.bodyLarge?.copyWith(color: _adornmentColor(context)) ??
+            TextStyle(fontSize: AppType.body, color: _adornmentColor(context));
     return AppTextField(
       label: label,
       controller: controller,
@@ -291,6 +314,16 @@ class NumberField extends StatelessWidget {
       autofocus: autofocus,
       focusNode: focusNode,
       onChanged: onChanged,
+      prefixIcon: prefix == null
+          ? null
+          : Padding(
+              padding: const EdgeInsets.only(left: 12),
+              child: Align(
+                alignment: AlignmentDirectional.centerStart,
+                widthFactor: 1,
+                child: Text(prefix!, style: adornment),
+              ),
+            ),
       keyboardType: TextInputType.numberWithOptions(
         decimal: allowDecimal,
         signed: allowNegative,
@@ -300,16 +333,24 @@ class NumberField extends StatelessWidget {
           RegExp(allowDecimal ? r'^-?\d*\.?\d*$' : r'^-?\d*$'),
         ),
       ],
-      // suffixIcon 这一槽是按子组件的固有宽度占位的：套一层 Center/Align 会吃掉整行剩余宽度，
-      // 把输入区压成 0 宽 —— 数字全画不出来，只剩货币符号。release 下不报红屏，界面上就是「框是空的」。
+      // suffixIcon 这一槽是按子组件的固有宽度占位的：套一层不带 widthFactor 的 Center/Align
+      // 会吃掉整行剩余宽度，把输入区压成 0 宽 —— 数字全画不出来，只剩货币符号，
+      // release 下不报红屏，界面上就是「框是空的」。所以居中必须配 widthFactor: 1。
       suffix: suffix == null
           ? null
           : Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: Text(suffix!, style: const TextStyle(fontSize: AppType.foot)),
+              padding: const EdgeInsets.only(right: 12),
+              child: Align(
+                alignment: AlignmentDirectional.centerEnd,
+                widthFactor: 1,
+                child: Text(suffix!, style: adornment),
+              ),
             ),
     );
   }
+
+  Color _adornmentColor(BuildContext context) =>
+      Theme.of(context).textTheme.bodyMedium?.color ?? AppInk.textSecondary;
 }
 
 /// 横向胶囊筛选：单选，选中项铺模块色。

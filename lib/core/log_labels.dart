@@ -1,4 +1,5 @@
 import '../data/entities.dart';
+import 'formatters.dart';
 import 'l10n.dart';
 
 /// 动态行的文案组装。网页端把这套 switch 写在 `DashboardPanel.tsx` 的组件里，
@@ -27,10 +28,28 @@ String logFieldLabel(L10n l10n, String field) => switch (field) {
       _ => field,
     };
 
+/// 变更值按字段性质排版：价格类走货币，其余原样。
+/// `price 12.5 → 15` 在屏幕上和数量改动分不出来，加符号才读得出这是钱。
+String logChangeValue(String field, String value, {String? currency}) {
+  if (currency == null || !_isMoneyField(field)) return value;
+  final double? amount = double.tryParse(value);
+  return amount == null ? value : Fmt.money(amount, symbol: currency);
+}
+
+bool _isMoneyField(String field) =>
+    field == 'price' || field == 'cost' || field.endsWith('_price') || field.endsWith('_cost');
+
+/// 逐字段变更，一条一小块 —— 网页端 `details.changes` 就是 per-field chips。
+/// 调用方自己决定摆成 chips 还是拼成一行文本。
+List<String> logChangeChips(L10n l10n, OperationLog log, {String? currency}) => log.changes
+    .map((LogChange change) => '${logFieldLabel(l10n, change.field)} '
+        '${logChangeValue(change.field, change.from, currency: currency)} → '
+        '${logChangeValue(change.field, change.to, currency: currency)}')
+    .toList(growable: false);
+
 /// `库存 4 → 539 · 仓位 A1 → B2`，无变更时回空串（调用方据此决定要不要占一行）。
-String logChangesLine(L10n l10n, OperationLog log) => log.changes
-    .map((LogChange change) => '${logFieldLabel(l10n, change.field)} ${change.from} → ${change.to}')
-    .join(' · ');
+String logChangesLine(L10n l10n, OperationLog log, {String? currency}) =>
+    logChangeChips(l10n, log, currency: currency).join(' · ');
 
 String logActorLabel(L10n l10n, OperationLog log) =>
     log.actor.isEmpty ? l10n.dashLogSystem : log.actor;
