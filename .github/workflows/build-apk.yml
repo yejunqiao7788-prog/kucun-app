@@ -44,9 +44,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: github.ref == 'refs/heads/main'
         with:
-          tag_name: v2.1.2
-          name: "TorgSeek库存 v2.1.2"
-          body: "修复首页「动态」：logs 信封键名不认导致整块恒空，改为按网页端口径只取商品改动并按 limit 取；操作人/动作/变更四语翻译与展示层级补齐。价格框初值区分 0 与未设置，避免整行替换把价格静默写成 0"
+          tag_name: v2.1.3
+          name: "TorgSeek库存 v2.1.3"
+          body: "修复价格/数量框里数字看不见：货币与单位后缀用 Center 包 Text 当 suffixIcon，吃掉整行宽度、把输入区压成 0 宽，屏上只剩「$」；这一处修的是所有 NumberField（商品编辑、批量改价、财务、展厅、市场、订单）。另修首页「动态」整块恒空（logs 信封键名不认），并把价格框初值区分 0 与未设置，避免整行替换把价格静默写成 0"
           files: build/app/outputs/flutter-apk/app-release.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

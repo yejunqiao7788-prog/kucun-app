@@ -300,10 +300,14 @@ class NumberField extends StatelessWidget {
           RegExp(allowDecimal ? r'^-?\d*\.?\d*$' : r'^-?\d*$'),
         ),
       ],
-      suffix: suffix == null ? null : Padding(
-        padding: const EdgeInsets.only(right: 8),
-        child: Center(child: Text(suffix!, style: const TextStyle(fontSize: AppType.foot))),
-      ),
+      // suffixIcon 这一槽是按子组件的固有宽度占位的：套一层 Center/Align 会吃掉整行剩余宽度，
+      // 把输入区压成 0 宽 —— 数字全画不出来，只剩货币符号。release 下不报红屏，界面上就是「框是空的」。
+      suffix: suffix == null
+          ? null
+          : Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Text(suffix!, style: const TextStyle(fontSize: AppType.foot)),
+            ),
     );
   }
 }
