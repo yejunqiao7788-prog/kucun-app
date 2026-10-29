@@ -44,9 +44,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: github.ref == 'refs/heads/main'
         with:
-          tag_name: v2.1.1
-          name: "TorgSeek库存 v2.1.1"
-          body: "修复订阅价目表解析：通道嵌在 channels 层底下，此前档位永远读不出来，订阅卡片恒显示「没有可用的支付渠道」"
+          tag_name: v2.1.2
+          name: "TorgSeek库存 v2.1.2"
+          body: "修复首页「动态」：logs 信封键名不认导致整块恒空，改为按网页端口径只取商品改动并按 limit 取；操作人/动作/变更四语翻译与展示层级补齐。价格框初值区分 0 与未设置，避免整行替换把价格静默写成 0"
           files: build/app/outputs/flutter-apk/app-release.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

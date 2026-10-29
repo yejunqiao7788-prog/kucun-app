@@ -13,6 +13,7 @@ import '../../core/access.dart';
 import '../../core/api_exception.dart';
 import '../../core/formatters.dart';
 import '../../core/l10n.dart';
+import '../../core/log_labels.dart';
 import '../../data/entities.dart';
 import '../../data/repositories.dart';
 import '../../design/tokens.dart';
@@ -686,7 +687,7 @@ class _AiScreenState extends State<AiScreen> {
                   .take(15)
                   .map((OperationLog log) => KeyValueRow(
                         label: Fmt.dateTime(log.createdAt),
-                        value: log.summary,
+                        value: logLine(l10n, log),
                       ))
                   .toList(growable: false),
             ),

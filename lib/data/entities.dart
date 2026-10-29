@@ -252,6 +252,15 @@ class DashboardStats extends JsonMap {
   double get totalValue => asDoubleOr('totalValue', 0);
 }
 
+class LogChange {
+  const LogChange({required this.field, required this.from, required this.to});
+
+  /// 变更字段的库列名（`quantity`/`price`/…），翻译由 `log_labels.dart` 负责。
+  final String field;
+  final String from;
+  final String to;
+}
+
 class OperationLog extends JsonMap {
   const OperationLog(super.json);
 
@@ -268,42 +277,35 @@ class OperationLog extends JsonMap {
 
   String get tableName => asStringOr('table_name', '');
 
-  JsonMap get _details => asMap('details');
+  JsonMap get details => asMap('details');
 
-  String get productName => asStringOr('name', _details.asStringOr('name', ''));
+  String get productName => asStringOr('name', details.asStringOr('name', ''));
 
-  String get productSku => asStringOr('sku', _details.asStringOr('sku', ''));
+  String get productSku => asStringOr('sku', details.asStringOr('sku', ''));
 
-  String get detail {
-    final String direct = asStringOr('detail', asStringOr('message', ''));
-    return direct.isNotEmpty ? direct : _changeSummary;
+  /// 变更对象名：网页端是 `details.name ?? details.sku ?? '—'`，这里同规则。
+  /// 保留策略清理这类系统写没有单品名，`name` 里放的是一句汇总，照样能用。
+  String get target {
+    final String name = productName;
+    return name.isNotEmpty ? name : (productSku.isNotEmpty ? productSku : '—');
   }
 
-  /// `quantity: 12 → 8 · location: A → B`，网页端是逐字段小块，这里收成一行文本。
-  String get _changeSummary {
-    final Map<String, Object?> changes = _details.asMap('changes').json;
-    return changes.entries
-        .map((MapEntry<String, Object?> entry) {
-          final JsonMap pair = JsonMap.from(entry.value);
-          return '${entry.key}: ${pair.raw('from') ?? '—'} → ${pair.raw('to') ?? '—'}';
-        })
-        .join(' · ');
-  }
-
-  /// 一行可读摘要：谁 · 做了什么 · 哪件货（带变更）。缺哪段跳哪段，不留空行。
-  String get summary {
-    final String target = productName.isNotEmpty ? productName : productSku;
-    final List<String> parts = <String>[
-      if (actor.isNotEmpty) actor,
-      if (action.isNotEmpty) action,
-      if (target.isNotEmpty) target,
-      if (detail.isNotEmpty) detail,
-    ];
-    return parts.isEmpty ? '—' : parts.join(' · ');
-  }
+  /// 逐字段变更，保留键序：网页端把每条渲染成独立小块，App 也一条条给，不在数据层拼成字符串。
+  List<LogChange> get changes => details.asMap('changes').json.entries
+      .map((MapEntry<String, Object?> entry) {
+        final JsonMap pair = JsonMap.from(entry.value);
+        return LogChange(
+          field: entry.key,
+          from: _display(pair.raw('from')),
+          to: _display(pair.raw('to')),
+        );
+      })
+      .toList(growable: false);
 
   DateTime? get createdAt => asDate('created_at');
 }
+
+String _display(Object? value) => value == null ? '—' : '$value';
 
 class Showroom extends JsonMap {
   const Showroom(super.json);
@@ -1556,10 +1558,12 @@ class Paged<T> {
 
   static Paged<R> of<R>(Object? envelopeData, R Function(Map<String, Object?> row) convert) {
     final JsonMap map = JsonMap.from(envelopeData);
-    // 分页出参有两套命名：业务侧用 `data/count/pageSize/totalPages`，集市用 `items/total/page_size`，
-    // 分析类还有裸数组。键名在这里一次性收口，不让每个仓库各猜一遍。
+    // 分页出参有三套命名：业务侧用 `data/count/pageSize/totalPages`，集市用 `items/total/page_size`，
+    // 分析类还有裸数组。另有两支端点根本不分页、把行放在资源名底下
+    // （`/dashboard/logs` → `logs`、`/payments` → `payments`，服务端内部切片封顶 50），
+    // 漏认这两个键会让整块列表恒空且不报错。键名在这里一次性收口，不让每个仓库各猜一遍。
     final List<Map<String, Object?>> rows =
-        JsonMap.rawListOf(map.json, <String>['data', 'items', 'rows']);
+        JsonMap.rawListOf(map.json, <String>['data', 'items', 'rows', 'logs', 'payments']);
     final int count = map.asInt('count') ?? map.asIntOr('total', rows.length);
     final int pageSize = map.asInt('pageSize') ?? map.asIntOr('page_size', rows.length);
     final int totalPages =

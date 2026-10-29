@@ -23,6 +23,13 @@ class Fmt {
     return body;
   }
 
+  /// 编辑框初值：`null` 留空（新建态、没设过的整箱价），真实的 0 写 `0.00`。
+  ///
+  /// 把 0 折叠成空框会让「没定价」和「定价就是 0」在屏幕上看不出区别，
+  /// 而商品 PATCH 是整行替换——用户以为空着就不动，实际把价格写回 0。
+  /// 与网页端 `ProductEditor.tsx` 的 `String(p.price)` / `box_price != null` 两条分支一致。
+  static String decimalSeed(double? value) => value == null ? '' : value.toStringAsFixed(2);
+
   /// 整数计数不带小数点，避免"12.00 单"这种读法。
   static String count(num value) => NumberFormat('#,##0').format(value);
 

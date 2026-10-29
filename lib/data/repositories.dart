@@ -82,14 +82,22 @@ class DashboardRepo {
     );
   }
 
-  Future<Paged<OperationLog>> logs({int page = 1, int pageSize = 20, String? search}) async {
+  /// `dashboard/logs` 没有 offset：服务端只认 `limit`（再收进 1..100），所以这里不装分页。
+  /// `table_name=products` 与网页端两处调用一致，服务端据此还会排除 CREATE
+  /// ——只看对现有货的改动，新建与批量导入不进动态。
+  Future<List<OperationLog>> logs({int limit = 8, String? search}) async {
     final Object? data = await _get(
       api,
       '/dashboard/logs',
-      query: <String, Object?>{'page': page, 'pageSize': pageSize, 'search': search},
+      query: <String, Object?>{
+        'table_name': 'products',
+        'limit': limit,
+        'search': search,
+      },
       tenant: tenant,
+      cache: true,
     );
-    return Paged.of<OperationLog>(data, OperationLog.new);
+    return Paged.of<OperationLog>(data, OperationLog.new).rows;
   }
 }
 

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../core/access.dart';
 import '../../core/formatters.dart';
 import '../../core/l10n.dart';
+import '../../core/log_labels.dart';
 import '../../data/entities.dart';
 import '../../data/repositories.dart';
 import '../../design/tokens.dart';
@@ -13,7 +14,6 @@ import '../../design/widgets/state_views.dart';
 import '../../design/widgets/surfaces.dart';
 import '../../shell/module_registry.dart';
 import '../../state/app_state.dart';
-import '../../state/list_controller.dart';
 import '../../state/value_loader.dart';
 import '../orders/order_detail_screen.dart';
 
@@ -33,12 +33,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   late final ValueLoader<DashboardOrders> _orders =
       ValueLoader<DashboardOrders>(() async => (await _repos.dashboard.orders()).data);
-  late final ListController<OperationLog> _logs = ListController<OperationLog>(
-    fetch: (int page) async {
-      final Paged<OperationLog> res = await _repos.dashboard.logs(page: page, pageSize: 8);
-      return FetchResult<OperationLog>(rows: res.rows, hasMore: res.hasMore);
-    },
-  );
+  // 服务端这支只有 `limit`、没有 offset，翻页拿回来的是同一批行，所以这里不该用 ListController。
+  late final ValueLoader<List<OperationLog>> _logs =
+      ValueLoader<List<OperationLog>>(() => _repos.dashboard.logs(limit: 8));
 
   @override
   void initState() {
@@ -63,6 +60,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget build(BuildContext context) {
     final AppState app = context.watch<AppState>();
     final L10n l10n = app.l10n;
+    final List<OperationLog> logs = _logs.value ?? const <OperationLog>[];
 
     // 与另外三个根标签同形：最外层 SafeArea(bottom: false)。
     // 工作台原先是唯一没有顶部安全区的根标签，列表首行从 y=8 起就压在状态栏下面，
@@ -102,10 +100,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               const VGap(14),
               // 下拉刷新失败但旧数据还在：整屏看着正常，其实已经不掉新数了，得说一声。
               RefreshFailureBanner.stale(_orders),
-              RefreshFailureBanner(
-                errorText: _logs.rows.isEmpty ? null : _logs.errorText,
-                onRetry: _logs.refresh,
-              ),
+              RefreshFailureBanner(errorText: _logs.hasValue ? _logs.errorText : null, onRetry: _logs.refresh),
               SectionHeader(title: l10n.dashQuickActions, accent: AppInk.dashboard),
               QuickActionRow(l10n: l10n, app: app),
               const VGap(22),
@@ -126,39 +121,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 const VGap(22),
               ],
               SectionHeader(title: l10n.dashActivity, accent: AppInk.ai),
-              if (_logs.state == LoadState.loading && _logs.rows.isEmpty)
+              if (_logs.loading && logs.isEmpty)
                 const SkeletonList(count: 3, itemHeight: 44)
-              else
-                ..._logs.rows.take(6).map(
-                      (OperationLog log) => Padding(
-                        padding: const EdgeInsets.only(bottom: 10),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: <Widget>[
-                            SizedBox(
-                              width: 66,
-                              child: Text(
-                                l10n.elapsed(log.createdAt),
-                                style: Theme.of(context).textTheme.bodySmall,
-                              ),
-                            ),
-                            Expanded(
-                              child: Text(
-                                log.summary,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: Theme.of(context).textTheme.bodyMedium,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-              if (_logs.state == LoadState.failed && _logs.rows.isEmpty)
+              else if (logs.isEmpty)
+                // 这一栏此前连空态都没有：没数据时标题下面一片空白，读起来像坏了。
                 Text(
-                  _logs.errorText ?? l10n.commonErrorTitle,
+                  _logs.errorText ?? l10n.dashNoLogs,
                   style: const TextStyle(color: AppInk.textTertiary, fontSize: AppType.foot),
-                ),
+                )
+              else
+                ...logs.take(6).map((OperationLog log) => _LogRow(log: log, l10n: l10n)),
             ],
           ),
         ),
@@ -167,8 +139,96 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 }
 
-class _PageHead extends StatelessWidget {
-  const _PageHead({required this.title, required this.subtitle});
+/// 一条动态：`时间 | 动作胶囊 · 商品名 / 变更明细 / 操作人`。
+/// 网页端是「图标块 + 胶囊 + 名称 + SKU 块 + 变更块 + 人·时间」六段，移动端宽度只够三段，
+/// 但动作、对象、变更、人这四层信息一个都不能少。
+class _LogRow extends StatelessWidget {
+  const _LogRow({required this.log, required this.l10n});
+
+  final OperationLog log;
+  final L10n l10n;
+
+  static Color _actionColor(String operation) => switch (operation) {
+        'CREATE' => AppInk.ai,
+        'DELETE' => AppInk.danger,
+        'FINALIZE' => AppInk.success,
+        'SYNC' => AppInk.info,
+        _ => AppInk.warning,
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    final String changes = logChangesLine(l10n, log);
+    final String sku = log.productSku;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          SizedBox(
+            width: 66,
+            child: Text(
+              l10n.elapsed(log.createdAt),
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: <Widget>[
+                    StatusPill(
+                      label: logActionLabel(l10n, log.action),
+                      color: _actionColor(log.action),
+                      dense: true,
+                    ),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 190),
+                      child: Text(
+                        log.target,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                    ),
+                    if (sku.isNotEmpty && log.target != sku)
+                      Text(
+                        sku,
+                        style: const TextStyle(
+                          fontSize: AppType.foot,
+                          color: AppInk.textTertiary,
+                        ),
+                      ),
+                  ],
+                ),
+                if (changes.isNotEmpty) ...<Widget>[
+                  const VGap(3),
+                  Text(
+                    changes,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: AppType.foot, color: AppInk.textSecondary),
+                  ),
+                ],
+                const VGap(3),
+                Text(
+                  logActorLabel(l10n, log),
+                  style: const TextStyle(fontSize: AppType.foot, color: AppInk.textTertiary),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PageHead extends StatelessWidget {  const _PageHead({required this.title, required this.subtitle});
 
   final String title;
   final String subtitle;

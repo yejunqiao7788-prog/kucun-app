@@ -150,13 +150,13 @@ class LocalQueryEngine {
   }
 
   Future<LocalResult> _logs(String keyword) async {
-    final Paged<OperationLog> page =
-        await _repos.dashboard.logs(pageSize: 30, search: keyword.isEmpty ? null : keyword);
+    final List<OperationLog> rows =
+        await _repos.dashboard.logs(limit: 30, search: keyword.isEmpty ? null : keyword);
     return LocalResult(
       kind: LocalKind.logs,
       note: keyword,
-      count: page.count,
-      logs: page.rows,
+      count: rows.length,
+      logs: rows,
     );
   }
 

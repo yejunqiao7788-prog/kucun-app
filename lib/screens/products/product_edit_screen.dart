@@ -74,7 +74,7 @@ class _ProductEditScreenState extends State<ProductEditScreen> {
   bool get _isNew => widget.product == null;
 
   static TextEditingController _decimal(double? value) =>
-      TextEditingController(text: (value ?? 0) == 0 ? '' : value!.toStringAsFixed(2));
+      TextEditingController(text: Fmt.decimalSeed(value));
 
   @override
   void initState() {
