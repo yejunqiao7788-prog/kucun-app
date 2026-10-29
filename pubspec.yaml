@@ -1,7 +1,7 @@
 name: kucun_app
-description: "torgseek 库存端 —— 原生 Flutter 客户端，直连生产 /api/business 与 Supabase Auth"
+description: "TorgSeek库存 —— 原生 Flutter 客户端，直连生产 /api/business 与 Supabase Auth"
 publish_to: "none"
-version: 2.0.0+12
+version: 2.1.0+13
 
 environment:
   sdk: ">=3.6.0 <4.0.0"
@@ -38,6 +38,7 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
+    - assets/brand/app_icon.png
     # 单据 PDF 需要自带字形：pdf 引擎不吃系统字体。Noto Sans 管拉丁/西里尔/越南文两个
     # 字重，Noto Sans SC 只做汉字兜底。
     - assets/fonts/NotoSans-Regular.ttf

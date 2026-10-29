@@ -103,6 +103,9 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       session.onResumed();
+      if (signedIn) {
+        unawaited(refreshProfileQuietly());
+      }
     }
   }
 

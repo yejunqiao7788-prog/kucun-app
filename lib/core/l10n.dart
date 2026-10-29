@@ -719,6 +719,13 @@ class L10n {
   String get setMemoUnstar => raw('set_memo_unstar');
   String get setModules => raw('set_modules');
   String get setNoPayableChannel => raw('set_no_payable_channel');
+  String get setPayWebTitle => raw('set_pay_web_title');
+  String get setPayWebBody => raw('set_pay_web_body');
+  String setPayWebAccount(Object email) =>
+      fill('set_pay_web_account', <String, Object>{'email': email});
+  String get setPayWebOpen => raw('set_pay_web_open');
+  String get setPayWebHint => raw('set_pay_web_hint');
+  String get setPayWebCopied => raw('set_pay_web_copied');
   String get setPayStillPending => raw('set_pay_still_pending');
   String get setPermReports => raw('set_perm_reports');
   String get setPrintCompany => raw('set_print_company');

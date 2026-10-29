@@ -11,7 +11,7 @@
     <uses-feature android:name="android.hardware.microphone" android:required="false"/>
 
     <application
-        android:label="torgseek 库存"
+        android:label="TorgSeek库存"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

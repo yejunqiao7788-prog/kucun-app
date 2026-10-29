@@ -44,9 +44,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: github.ref == 'refs/heads/main'
         with:
-          tag_name: v2.0.0
-          name: "torgseek 库存端 v2.0.0"
-          body: "Flutter 库存端：直连生产后端（Supabase + /api/business），多彩扁平化界面与新底部导航"
+          tag_name: v2.1.0
+          name: "TorgSeek库存 v2.1.0"
+          body: "TorgSeek库存：库存端新图标与新名称；订阅改为引导网页端登录支付"
           files: build/app/outputs/flutter-apk/app-release.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

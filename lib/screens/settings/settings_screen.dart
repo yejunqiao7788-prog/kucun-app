@@ -4,7 +4,6 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/access.dart';
 import '../../core/api_client.dart';
@@ -18,6 +17,7 @@ import '../../data/profile.dart';
 import '../../design/tokens.dart';
 import '../../design/widgets/controls.dart';
 import '../../design/widgets/paged_view.dart';
+import '../../design/widgets/payment_guide.dart';
 import '../../design/widgets/sheets.dart';
 import '../../design/widgets/state_views.dart';
 import '../../design/widgets/surfaces.dart';
@@ -59,9 +59,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// 打码开关也归页面：滑走再滑回来不该偷偷重新遮上。
   bool _revealed = false;
 
-  /// 下单与轮询同样挂在页面：续费要跳外部收银台，回来时卡片早被滚掉了。
-  bool _busy = false;
-
   @override
   void initState() {
     super.initState();
@@ -81,54 +78,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await Future.wait<void>(<Future<void>>[_numbers.refresh(), _plans.refresh()]);
   }
 
-  Future<void> _pay(PlanRow plan, PlanChannel channel) async {
-    final L10n l10n = _app.l10n;
-    setState(() => _busy = true);
-    try {
-      final PaymentTicket ticket = await _app.guardWrite<PaymentTicket>(
-        () => _app.repos.settings.createPayment(planType: plan.planType, channel: channel.name),
+  Future<void> _openSubscription() => showWebSubscriptionGuide(
+        context,
+        l10n: _app.l10n,
+        email: _app.profile.email,
       );
-      final Uri? uri = ticket.pageUrl == null ? null : Uri.tryParse(ticket.pageUrl!);
-      if (uri != null) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      }
-      if (!mounted) return;
-      showToast(context, l10n.finPayOpen);
-      await _poll(ticket.id);
-    } on Object catch (error) {
-      if (!mounted) return;
-      setState(() => _busy = false);
-      showToast(context, _app.describeError(error), danger: true);
-    }
-  }
-
-  Future<void> _poll(String paymentId) async {
-    for (int attempt = 0; attempt < 6; attempt++) {
-      await Future<void>.delayed(const Duration(seconds: 3));
-      try {
-        final PaymentTicket ticket = await _app.repos.settings.paymentStatus(paymentId);
-        if (ticket.succeeded) {
-          await _app.loadProfile();
-          if (!mounted) return;
-          setState(() => _busy = false);
-          showToast(context, _app.l10n.finPaidOk);
-          return;
-        }
-        if (ticket.terminal) {
-          if (!mounted) return;
-          setState(() => _busy = false);
-          showToast(context, ticket.failureReason ?? _app.l10n.commonErrorTitle, danger: true);
-          return;
-        }
-      } on Object {
-        // 轮询失败只当「还没回来」，终态会由下一次重试看到。
-        continue;
-      }
-    }
-    if (!mounted) return;
-    setState(() => _busy = false);
-    showToast(context, _app.l10n.setPayStillPending);
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -158,7 +112,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               const VGap(12),
             ],
-            _RenewalCard(plans: _plans, busy: _busy, onPay: _pay),
+            _RenewalCard(plans: _plans, onOpen: _openSubscription),
             const VGap(14),
             _AccountCard(profile: profile),
             if (app.canOpenModule(ModuleKey.dashboard)) ...<Widget>[
@@ -857,16 +811,13 @@ class _SignOutCard extends StatelessWidget {
   }
 }
 
-/// 订阅与续费：与财务模块同一套服务端票据，但不依赖经营权限位。
+/// 订阅与续费：价目表仍由服务端提供，但付款动作在网页端完成。
 /// 未到期时常驻「我的」，与网页端的订阅页同位；到期后它就是唯一的解锁入口。
-///
-/// 无状态：价目表 loader、忙碌位与轮询都由页面持有，这张卡只管把当前的数据画出来。
 class _RenewalCard extends StatelessWidget {
-  const _RenewalCard({required this.plans, required this.busy, required this.onPay});
+  const _RenewalCard({required this.plans, required this.onOpen});
 
   final ValueLoader<PlanBoard> plans;
-  final bool busy;
-  final Future<void> Function(PlanRow plan, PlanChannel channel) onPay;
+  final Future<void> Function() onOpen;
 
   @override
   Widget build(BuildContext context) {
@@ -907,12 +858,7 @@ class _RenewalCard extends StatelessWidget {
                         if (plan.hasPrice)
                           Padding(
                             padding: const EdgeInsets.only(bottom: 8),
-                            child: _PlanTile(
-                              plan: plan,
-                              channel: channel,
-                              busy: busy,
-                              onPay: onPay,
-                            ),
+                            child: _PlanTile(plan: plan, channel: channel, onOpen: onOpen),
                           ),
               ],
             ],
@@ -924,17 +870,11 @@ class _RenewalCard extends StatelessWidget {
 }
 
 class _PlanTile extends StatelessWidget {
-  const _PlanTile({
-    required this.plan,
-    required this.channel,
-    required this.busy,
-    required this.onPay,
-  });
+  const _PlanTile({required this.plan, required this.channel, required this.onOpen});
 
   final PlanRow plan;
   final PlanChannel channel;
-  final bool busy;
-  final Future<void> Function(PlanRow, PlanChannel) onPay;
+  final Future<void> Function() onOpen;
 
   @override
   Widget build(BuildContext context) {
@@ -942,7 +882,7 @@ class _PlanTile extends StatelessWidget {
     final String symbol = channel.currency == 'UAH' ? '₴' : r'$';
     return RowCard(
       accent: AppInk.finance,
-      onTap: busy ? null : () => onPay(plan, channel),
+      onTap: onOpen,
       leading: Container(
         width: 44,
         height: 44,
@@ -958,10 +898,7 @@ class _PlanTile extends StatelessWidget {
       ),
       title: _planLabel(plan.planType, l10n),
       subtitle: '${l10n.setExpiresInDays(plan.days)} · ${channel.name}',
-      trailing: Icon(
-        busy ? Icons.hourglass_top_rounded : Icons.arrow_circle_right_rounded,
-        color: AppInk.danger,
-      ),
+      trailing: const Icon(Icons.open_in_new_rounded, color: AppInk.danger),
     );
   }
 

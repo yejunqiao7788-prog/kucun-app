@@ -41,6 +41,6 @@ class Env {
   static const Duration normalTimeout = Duration(seconds: 30);
   static const Duration heavyTimeout = Duration(seconds: 60);
 
-  static const String appName = 'torgseek 库存';
+  static const String appName = 'TorgSeek库存';
   static const String appVersion = '2.0.0';
 }

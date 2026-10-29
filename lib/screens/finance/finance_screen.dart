@@ -12,6 +12,7 @@ import '../../data/entities.dart';
 import '../../design/tokens.dart';
 import '../../design/widgets/controls.dart';
 import '../../design/widgets/paged_view.dart';
+import '../../design/widgets/payment_guide.dart';
 import '../../design/widgets/sheets.dart';
 import '../../design/widgets/state_views.dart';
 import '../../design/widgets/surfaces.dart';
@@ -26,8 +27,8 @@ import '../../state/value_loader.dart';
 /// 1. 汇总走 `GET /finance/stats`，命中扫描上限时 `truncated=true`，界面必须如实说「可能少报」；
 /// 2. 欠款面 `GET /finance/debts` 按客户分组且没有分页，还款是 `POST /finance/debts/:customer_id`，
 ///    服务端从最老的未结清单往下抵，超出部分回成找零而不是余额；
-/// 3. 订阅与钱包充值都只在服务端托管收银台扣款，客户端拿到的是一张带 `page_url` 的票据，
-///    App 只负责打开它并轮询状态，任何客户端金额都不参与。
+/// 3. 钱包充值可在 App 外打开服务端托管收银台；订阅收银台只能在网页端完成，
+///    App 引导用户用同一账号登录后付款，任何客户端金额都不参与。
 class FinanceScreen extends StatefulWidget {
   const FinanceScreen({super.key});
 
@@ -1130,19 +1131,16 @@ class _WalletTabState extends State<_WalletTab> {
                               style: const TextStyle(
                                   fontSize: AppType.foot, fontWeight: AppType.semi),
                             ),
-                            onTap: _busy
-                                ? null
-                                : () => _pay(
-                                      () => app.repos.settings.createPayment(
-                                        planType: plan.planType,
-                                        channel: channel.name,
-                                      ),
-                                    ),
+                            onTap: () => showWebSubscriptionGuide(
+                              context,
+                              l10n: l10n,
+                              email: app.profile.email,
+                            ),
                           ),
                         ),
                     ],
                     const VGap(8),
-                    Text(l10n.finPayOpen,
+                    Text(l10n.setPayWebHint,
                         style: const TextStyle(fontSize: AppType.foot, color: AppInk.textTertiary)),
                   ],
                 );

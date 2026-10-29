@@ -86,14 +86,14 @@ class _LoginScreenState extends State<LoginScreen> {
             children: <Widget>[
               Row(
                 children: <Widget>[
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: AppInk.dashboard,
-                      borderRadius: BorderRadius.circular(14),
+                  const ClipRRect(
+                    borderRadius: BorderRadius.all(Radius.circular(14)),
+                    child: Image(
+                      image: AssetImage('assets/brand/app_icon.png'),
+                      width: 44,
+                      height: 44,
+                      fit: BoxFit.cover,
                     ),
-                    child: const Icon(Icons.inventory_2_rounded, color: Colors.white, size: 24),
                   ),
                   const HGap(10),
                   Text(Env.appName,

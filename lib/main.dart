@@ -84,15 +84,14 @@ class _Splash extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              Container(
-                width: 76,
-                height: 76,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.18),
-                  borderRadius: BorderRadius.circular(22),
+              const ClipRRect(
+                borderRadius: BorderRadius.all(Radius.circular(22)),
+                child: Image(
+                  image: AssetImage('assets/brand/app_icon.png'),
+                  width: 76,
+                  height: 76,
+                  fit: BoxFit.cover,
                 ),
-                child: const Icon(Icons.inventory_2_rounded,
-                    color: Colors.white, size: 38),
               ),
               const SizedBox(height: 18),
               const Text(
