@@ -177,6 +177,7 @@ const Map<String, List<String>> kStrings = <String, List<String>>{
   'prod_import_hint': <String>['从 Excel 或 WPS 复制商品行粘贴到这里，制表符和逗号都认；第一行是表头会自动对上字段', 'Copy rows from Excel or WPS and paste them here — tabs and commas both work; a header row is matched to fields automatically', 'Скопіюйте рядки з Excel чи WPS і вставте сюди — табуляція і коми працюють; рядок заголовків сам підлаштується до полів', 'Dán các dòng từ Excel hoặc WPS vào đây — tab và dấu phẩy đều dùng được; dòng tiêu đề tự khớp với trường'],
   'prod_import_ready': <String>['可导入 {n} 行', '{n} rows ready', 'Готово до імпорту: {n}', '{n} dòng sẵn sàng'],
   'prod_import_skipped': <String>['忽略 {n} 行', '{n} rows skipped', 'Пропущено рядків: {n}', '{n} dòng bị bỏ qua'],
+  'prod_import_dup': <String>['{n} 个 SKU 在文件内重复，多出来的行会被拒绝（SKU 已存在）', '{n} SKUs repeat inside this file — the extra rows will be rejected (SKU already exists)', 'SKU, що повторюються в межах файлу: {n} — зайві рядки буде відхилено (SKU існує)', '{n} SKU trùng nhau trong tệp — dòng thừa sẽ bị từ chối (SKU đã tồn tại)'],
   'prod_import_fix_only': <String>['只修正库存', 'Fix stock only', 'Лише виправити залишок', 'Chỉ sửa tồn kho'],
   'prod_import_running': <String>['导入中 {done}/{total}', 'Importing {done}/{total}', 'Імпорт {done}/{total}', 'Đang nhập {done}/{total}'],
   'prod_import_result': <String>['成功 {ok} 条 · 失败 {bad} 条', '{ok} ok · {bad} failed', 'Успіх {ok} · помилок {bad}', 'OK {ok} · lỗi {bad}'],

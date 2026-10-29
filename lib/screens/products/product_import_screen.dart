@@ -40,6 +40,7 @@ class _ProductImportScreenState extends State<ProductImportScreen> {
 
   List<SheetRow> _rows = const <SheetRow>[];
   List<String> _dropped = const <String>[];
+  List<String> _dupSkus = const <String>[];
   String? _source;
   bool _reading = false;
   bool _fixOnly = false;
@@ -64,6 +65,7 @@ class _ProductImportScreenState extends State<ProductImportScreen> {
     setState(() {
       _rows = parse.rows;
       _dropped = parse.dropped;
+      _dupSkus = parse.duplicateSkus;
       _source = fromFile;
       _reading = false;
       _error = switch (parse.failure) {
@@ -251,6 +253,7 @@ class _ProductImportScreenState extends State<ProductImportScreen> {
                       title: '${row.sku} · ${row.name}',
                       subtitle: '${Fmt.count(row.quantity)} ${row.unit.isEmpty ? '个' : row.unit} · '
                           '${app.formatMoney(row.price)}'
+                          '${row.category.isEmpty ? '' : ' · ${row.category}'}'
                           '${row.location.isEmpty ? '' : ' · ${row.location}'}',
                     ),
                   if (_rows.length > 12)
@@ -275,6 +278,19 @@ class _ProductImportScreenState extends State<ProductImportScreen> {
             const VGap(8),
             Text(
               _dropped.take(3).join(' / '),
+              style: const TextStyle(fontSize: AppType.foot, color: AppInk.textTertiary),
+            ),
+          ],
+          if (_dupSkus.isNotEmpty) ...<Widget>[
+            const VGap(14),
+            NoticeBanner(
+              text: l10n.prodImportDup(_dupSkus.length),
+              color: AppInk.warning,
+              icon: Icons.copy_rounded,
+            ),
+            const VGap(8),
+            Text(
+              _dupSkus.take(6).join(' / '),
               style: const TextStyle(fontSize: AppType.foot, color: AppInk.textTertiary),
             ),
           ],
@@ -425,6 +441,7 @@ class _ProductImportScreenState extends State<ProductImportScreen> {
   void _resetPreview() {
     _rows = const <SheetRow>[];
     _dropped = const <String>[];
+    _dupSkus = const <String>[];
     _source = null;
     _ok = 0;
     _bad = 0;

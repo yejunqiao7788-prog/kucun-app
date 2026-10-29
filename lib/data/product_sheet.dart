@@ -1,6 +1,9 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:archive/archive.dart';
 import 'package:excel/excel.dart';
+import 'package:xml/xml.dart';
 
 // 商品表格导入的解析与模板生成。
 //
@@ -63,10 +66,23 @@ class SheetParse {
   const SheetParse.failed(this.failure) : rows = const <SheetRow>[], dropped = const <String>[];
 
   final List<SheetRow> rows;
+
+  /// 被丢掉的行（缺名称或缺 SKU），原文照抄，由界面取前几条当样本。
   final List<String> dropped;
   final SheetFailure? failure;
 
   bool get ok => failure == null;
+
+  /// 文件内部重复的 SKU。服务端逐行走 saveProduct，那里有 SKU 唯一性检查，
+  /// 所以同一份表里重复的那几行注定失败 —— 网页端在导入前就把它们挑出来，
+  /// 这里提前一行到预览阶段，商户按「添加」之前就能看见。
+  List<String> get duplicateSkus {
+    final Map<String, int> seen = <String, int>{};
+    for (final SheetRow row in rows) {
+      seen[row.sku] = (seen[row.sku] ?? 0) + 1;
+    }
+    return seen.entries.where((MapEntry<String, int> e) => e.value > 1).map((MapEntry<String, int> e) => e.key).toList(growable: false);
+  }
 }
 
 // ———————————————————————————— xlsx ————————————————————————————
@@ -91,9 +107,7 @@ SheetParse parseXlsxBytes(Uint8List bytes) {
   for (final List<String> cells in grid.skip(1)) {
     final SheetRow? row = _rowFrom(cells, columns);
     if (row == null) {
-      if (cells.any((String cell) => cell.isNotEmpty) && dropped.length < 8) {
-        dropped.add(cells.where((String cell) => cell.isNotEmpty).join(' · '));
-      }
+      if (cells.any((String cell) => cell.isNotEmpty)) dropped.add(cells.where((String cell) => cell.isNotEmpty).join(' · '));
       continue;
     }
     rows.add(row);
@@ -102,16 +116,132 @@ SheetParse parseXlsxBytes(Uint8List bytes) {
   return SheetParse(rows, dropped);
 }
 
+/// xlsx 的第一张表 → 文本网格。
+///
+/// 不用 package:excel 读：它解析 styles.xml 时对任何 `numFmtId < 164` 的声明直接抛
+/// `Exception`，而 Excel/WPS 会把内置会计格式（41–44，中文环境就是那几套带 ￥ 的）
+/// 原样写进 `<numFmts>`。于是商户手里最常见的表在 App 里变成「文件为空或格式不正确」，
+/// 而网页端用 SheetJS，同一张表照读不误。导入只关心单元格的值，样式一律不看，
+/// 所以这里自己拆 zip 读 sheet XML；生成模板仍然走 package:excel。
 List<List<String>> _firstSheetGrid(Uint8List bytes) {
-  final Excel excel = Excel.decodeBytes(bytes);
-  // 表名随商户自己改的文件走：拿第一张，不猜名字。
-  final Sheet sheet = excel.tables.values.first;
-  return sheet.rows
-      .map((List<Data?> line) => line.map(_cellText).toList(growable: false))
+  final Archive archive = ZipDecoder().decodeBytes(bytes);
+  final List<String> shared = _sharedStrings(_zipText(archive, 'xl/sharedStrings.xml'));
+  final String? sheetXml = _zipText(archive, _firstSheetPath(archive));
+  if (sheetXml == null) throw const FormatException('xlsx 里没有工作表');
+  return _sheetGrid(sheetXml, shared);
+}
+
+String? _zipText(Archive archive, String name) {
+  final ArchiveFile? file = archive.findFile(name);
+  if (file == null || !file.isFile) return null;
+  final Object? content = file.content;
+  if (content is! List<int>) return null;
+  return utf8.decode(content, allowMalformed: true);
+}
+
+/// 表名随商户自己改的文件走，所以按 workbook 里第一张表的顺序找文件，不猜文件名。
+String _firstSheetPath(Archive archive) {
+  const String fallback = 'xl/worksheets/sheet1.xml';
+  final String? workbook = _zipText(archive, 'xl/workbook.xml');
+  final String? rels = _zipText(archive, 'xl/_rels/workbook.xml.rels');
+  if (workbook == null || rels == null) return fallback;
+  final XmlElement? sheets = _child(
+    XmlDocument.parse(workbook).rootElement,
+    'sheets',
+  );
+  if (sheets == null || sheets.findElements('sheet').isEmpty) return fallback;
+  final XmlElement first = sheets.findElements('sheet').first;
+  final String? rid = first.getAttribute('r:id') ?? first.getAttribute('id');
+  if (rid == null) return fallback;
+  final Iterable<XmlElement> matches = XmlDocument.parse(rels)
+      .rootElement
+      .findElements('Relationship')
+      .where((XmlElement e) => e.getAttribute('Id') == rid);
+  if (matches.isEmpty) return fallback;
+  final String target = matches.first.getAttribute('Target') ?? 'worksheets/sheet1.xml';
+  if (target.startsWith('/')) return target.substring(1);
+  return target.startsWith('xl/') ? target : 'xl/$target';
+}
+
+List<String> _sharedStrings(String? xmlText) {
+  if (xmlText == null) return const <String>[];
+  return XmlDocument.parse(xmlText)
+      .rootElement
+      .findElements('si')
+      .map((XmlElement si) => _textOf(si))
       .toList(growable: false);
 }
 
-String _cellText(Data? cell) => cell?.value?.toString().trim() ?? '';
+List<List<String>> _sheetGrid(String sheetXml, List<String> shared) {
+  final XmlElement? data = _child(XmlDocument.parse(sheetXml).rootElement, 'sheetData');
+  if (data == null) return const <List<String>>[];
+  final List<List<String>> grid = <List<String>>[];
+  for (final XmlElement row in data.findElements('row')) {
+    final List<String> cells = <String>[];
+    for (final XmlElement cell in row.findElements('c')) {
+      // 空单元格在 xlsx 里根本不写，所以列位必须按 `r="D3"` 这种引用对齐，
+      // 不能按出现顺序数 —— 否则商户留空的价格列会把成本拽进价格字段。
+      final String? ref = cell.getAttribute('r');
+      final int at = ref == null ? cells.length : _columnIndexOf(ref);
+      while (cells.length < at) {
+        cells.add('');
+      }
+      cells.add(_cellText(cell, shared));
+    }
+    grid.add(cells);
+  }
+  return grid;
+}
+
+String _cellText(XmlElement cell, List<String> shared) {
+  final String type = cell.getAttribute('t') ?? 'n';
+  if (type == 'inlineStr') {
+    final XmlElement? inline = _child(cell, 'is');
+    return inline == null ? '' : _textOf(inline).trim();
+  }
+  final XmlElement? value = _child(cell, 'v');
+  if (value == null) return '';
+  final String raw = value.innerText.trim();
+  if (type == 's') {
+    final int? index = int.tryParse(raw);
+    if (index == null || index < 0 || index >= shared.length) return raw;
+    return shared[index].trim();
+  }
+  if (type == 'b') return raw == '1' ? 'true' : 'false';
+  return raw;
+}
+
+int _columnIndexOf(String ref) {
+  int index = 0;
+  for (final int unit in ref.codeUnits) {
+    if (unit < 65 || unit > 122) break;
+    final int letter = (unit & 0x5F) - 64;
+    if (letter < 1 || letter > 26) break;
+    index = index * 26 + letter;
+  }
+  return index == 0 ? 0 : index - 1;
+}
+
+XmlElement? _child(XmlElement node, String name) {
+  for (final XmlNode child in node.children) {
+    if (child is XmlElement && child.name.local == name) return child;
+  }
+  return null;
+}
+
+/// `<si>` 的正文：直挂的 `<t>` 与富文本 run 都要拼，`<rPh>` 里的注音串不算正文。
+String _textOf(XmlElement node) {
+  final StringBuffer buf = StringBuffer();
+  for (final XmlElement t in node.findElements('t')) {
+    buf.write(t.innerText);
+  }
+  for (final XmlElement r in node.findElements('r')) {
+    for (final XmlElement t in r.findElements('t')) {
+      buf.write(t.innerText);
+    }
+  }
+  return buf.toString();
+}
 
 /// 列名 → 字段，顺序敏感：箱规/整箱价/箱数必须排在价格与数量之前，
 /// 否则「库存箱数」会被泛化的「数量」先抢走。
@@ -158,8 +288,9 @@ SheetRow? _rowFrom(List<String> cells, Map<String, int> columns) {
   final String sku = pick('sku');
   if (name.isEmpty || sku.isEmpty) return null;
 
-  // 箱规必须 > 1 才算支持整箱，且整箱价跟着一起作废（原项目就是这么成对删的）。
+  // 箱规必须 > 1 才算支持整箱（网页端 `upb <= 1` 就删），且整箱价跟着一起作废。
   int? perBox = _positiveInt(pick('units_per_box'));
+  if (perBox != null && perBox <= 1) perBox = null;
   double? boxPrice = pick('box_price').isEmpty ? null : _decimal(pick('box_price'));
   if (perBox == null) boxPrice = null;
 
@@ -241,7 +372,7 @@ SheetParse parsePastedText(String text) {
     final String sku = pick('sku');
     final String name = pick('name');
     if (sku.isEmpty || name.isEmpty) {
-      if (dropped.length < 8) dropped.add(cells.join(' · ').trim());
+      dropped.add(cells.join(' · ').trim());
       continue;
     }
     rows.add(

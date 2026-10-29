@@ -1,7 +1,7 @@
 name: kucun_app
 description: "TorgSeek库存 —— 原生 Flutter 客户端，直连生产 /api/business 与 Supabase Auth"
 publish_to: "none"
-version: 2.1.5+18
+version: 2.1.6+19
 
 environment:
   sdk: ">=3.6.0 <4.0.0"
@@ -24,6 +24,10 @@ dependencies:
   record: ^7.1.2
   file_picker: ^13.3.0
   excel: ^4.0.6
+  # 读商户 xlsx 要自己拆 zip（package:excel 读样式会对内置 numFmtId 抛异常，见
+  # product_sheet.dart），这两个都在 excel 的依赖树里，这里只是提到直接依赖。
+  archive: ^3.6.1
+  xml: ^6.6.1
   # 拍照录单的兜底重编：image_picker 压不进 3.5 MB 上限时，在 isolate 里走质量阶梯。
   # 它本来就在依赖树里（excel 带进来），这里只是提到直接依赖。
   image: ^4.3.0

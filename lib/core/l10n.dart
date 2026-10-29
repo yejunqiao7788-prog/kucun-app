@@ -237,6 +237,7 @@ class L10n {
   String prodImportRunning(Object done, Object total) =>
       fill('prod_import_running', <String, Object>{'done': done, 'total': total});
   String prodImportSkipped(Object n) => fill('prod_import_skipped', <String, Object>{'n': n});
+  String prodImportDup(Object n) => fill('prod_import_dup', <String, Object>{'n': n});
   String get prodImportPickXlsx => raw('prod_import_pick_xlsx');
   String get prodImportReading => raw('prod_import_reading');
   String get prodImportTemplate => raw('prod_import_template');

@@ -44,9 +44,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: github.ref == 'refs/heads/main'
         with:
-          tag_name: v2.1.5
-          name: "TorgSeek库存 v2.1.5"
-          body: "首页动态：批量改价、外部同步、保留期清理这三类记录不再只显示一个破折号 —— 服务端这几支既不写 changes 也不写商品名，网页端同样读不出内容，现在从 details 的参数与计数直接读出干了什么（方式与数值、共几件、更新/无变化/失败、新增 SKU 数、售价取自哪列、软删/硬删）。逐字段变更不再截断成三条，全部摆开；动态条数 6 → 10。金额档带货币符号，百分比档带 %。"
+          tag_name: v2.1.6
+          name: "TorgSeek库存 v2.1.6"
+          body: "商品表格导入修好：商户的 .xlsx 一律报「文件为空或格式不正确」—— package:excel 读样式表时，遇到 Excel/WPS 写进去的内置会计格式（带 ￥ 那几套）直接抛异常，现在改成自己拆 zip 读单元格值，样式不看。空着不写的单元格按列引用对齐，价格留空不会再串到成本列；「忽略 N 行」的计数不再被截成 8。预览加上分类，并按网页端提前标出文件内重复的 SKU（这些行服务端一定会被拒）。箱规 > 1 才算整箱，与网页端一致。"
           files: build/app/outputs/flutter-apk/app-release.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
