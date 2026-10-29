@@ -175,7 +175,15 @@ class L10n {
   String get dashRecentOrders => raw('dash_recent_orders');
   String get dashPicking => raw('dash_picking');
   String get dashActivity => raw('dash_activity');
-  String dashMoreChanges(Object n) => fill('dash_more_changes', <String, Object>{'n': n});
+  String get dashBatchPrice => raw('dash_batch_price');
+  String dashSyncedFrom(Object source) =>
+      fill('dash_synced_from', <String, Object>{'source': source});
+  String dashBatchTotal(Object n) => fill('dash_batch_total', <String, Object>{'n': n});
+  String dashNewFound(Object n) => fill('dash_new_found', <String, Object>{'n': n});
+  String dashPriceTarget(Object field) =>
+      fill('dash_price_target', <String, Object>{'field': field});
+  String dashRetentionCounts({required Object soft, required Object hard}) =>
+      fill('dash_retention_counts', <String, Object>{'soft': soft, 'hard': hard});
   String get dashQuickActions => raw('dash_quick_actions');
   String get dashNoLogs => raw('dash_no_logs');
   String get dashLogSystem => raw('dash_log_system');

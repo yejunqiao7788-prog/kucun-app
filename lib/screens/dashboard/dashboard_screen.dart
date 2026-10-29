@@ -35,8 +35,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ValueLoader<DashboardOrders>(() async => (await _repos.dashboard.orders()).data);
   // 服务端这支只有 `limit`、没有 offset，翻页拿回来的是同一批行，所以这里不该用 ListController。
   // 拉几条就摆几条：以前拉 8 只显示 6，那两条永远读不到，还像是丢数据。
+  // 网页端那个 360px 高的滚动框里放 30 条，移动端跟着抄会把待备货的单挤出屏幕，10 条是这一屏的容量上限。
   late final ValueLoader<List<OperationLog>> _logs =
-      ValueLoader<List<OperationLog>>(() => _repos.dashboard.logs(limit: 6));
+      ValueLoader<List<OperationLog>>(() => _repos.dashboard.logs(limit: 10));
 
   @override
   void initState() {
@@ -178,16 +179,14 @@ class LogRowCard extends StatelessWidget {
         _ => Icons.edit_rounded,
       };
 
-  /// 一次改动可能牵扯七个字段，全摆出来会把列表拉成砖墙；留 3 条，剩下的报数。
-  static const int _maxChips = 3;
-
+  // 一次改动可能牵扯七个字段，网页端全摆，这里也全摆：截断成 3 条曾经把
+  // 「到底改了什么」藏进「+4 项」，正是这一栏最没用的状态。
   @override
   Widget build(BuildContext context) {
     final Color accent = _actionColor(log.action);
     final String sku = log.productSku;
+    final String objectName = logObjectLabel(l10n, log);
     final List<String> chips = logChangeChips(l10n, log, currency: currency);
-    final List<String> shown = chips.take(_maxChips).toList(growable: false);
-    final int hidden = chips.length - shown.length;
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
       child: Row(
@@ -217,7 +216,7 @@ class LogRowCard extends StatelessWidget {
                     const HGap(6),
                     Expanded(
                       child: Text(
-                        log.target,
+                        objectName,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
@@ -226,16 +225,14 @@ class LogRowCard extends StatelessWidget {
                     ),
                   ],
                 ),
-                if (shown.isNotEmpty || sku.isNotEmpty && log.target != sku) ...<Widget>[
+                if (chips.isNotEmpty || sku.isNotEmpty && objectName != sku) ...<Widget>[
                   const VGap(5),
                   Wrap(
                     spacing: 6,
                     runSpacing: 4,
                     children: <Widget>[
-                      if (sku.isNotEmpty && log.target != sku)
-                        _MetaChip(text: sku, muted: true),
-                      for (final String chip in shown) _MetaChip(text: chip),
-                      if (hidden > 0) _MetaChip(text: l10n.dashMoreChanges(hidden)),
+                      if (sku.isNotEmpty && objectName != sku) _MetaChip(text: sku, muted: true),
+                      for (final String chip in chips) _MetaChip(text: chip),
                     ],
                   ),
                 ],

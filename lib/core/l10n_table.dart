@@ -106,8 +106,30 @@ const Map<String, List<String>> kStrings = <String, List<String>>{
   'dash_recent_orders': <String>['最近订单', 'Recent orders', 'Останні замовлення', 'Đơn gần đây'],
   'dash_picking': <String>['备货中', 'Preparing', 'Готується', 'Đang soạn hàng'],
   'dash_activity': <String>['动态', 'Activity', 'Події', 'Hoạt động'],
-  'dash_more_changes': <String>['+{n} 项', '+{n} more', '+{n} ще', '+{n} nữa'],
   'dash_no_logs': <String>['暂无操作记录', 'No activity yet', 'Немає записів', 'Chưa có hoạt động'],
+  // 批量改价 / 外部同步 / 保留期清理这三支服务端既不写 details.name 也不写 changes，
+  // 网页端只能打印「—」。动态行没有对象名就等于没发生，所以这里给它们各自的名字。
+  'dash_batch_price': <String>['批量改价', 'Bulk pricing', 'Пакетне ціни', 'Đổi giá hàng loạt'],
+  'dash_synced_from': <String>[
+    '外部同步 {source}',
+    'Synced from {source}',
+    'Синхронізовано з {source}',
+    'Đồng bộ từ {source}',
+  ],
+  'dash_batch_total': <String>['共 {n} 件', '{n} items', '{n} позицій', '{n} mặt hàng'],
+  'dash_new_found': <String>['新增 {n} 个 SKU', '{n} new SKUs', '{n} нових SKU', '{n} SKU mới'],
+  'dash_price_target': <String>[
+    '售价取自 {field}',
+    'Price from {field}',
+    'Ціна з {field}',
+    'Giá lấy từ {field}',
+  ],
+  'dash_retention_counts': <String>[
+    '软删 {soft} · 硬删 {hard}',
+    'Soft-deleted {soft} · purged {hard}',
+    'М’яке видалення {soft} · остаточне {hard}',
+    'Xóa mềm {soft} · xóa hẳn {hard}',
+  ],
   'dash_log_system': <String>['系统', 'System', 'Система', 'Hệ thống'],
   'dash_log_create': <String>['新增', 'Created', 'Створено', 'Đã tạo'],
   'dash_log_update': <String>['修改', 'Updated', 'Оновлено', 'Đã cập nhật'],
