@@ -378,6 +378,9 @@ class L10n {
   String get mpTelegramBind => raw('mp_telegram_bind');
   String get mpLeadStatus => raw('mp_lead_status');
   String get mpLeadNew => raw('mp_lead_new');
+
+  /// 首响已回答的留资数；口径与服务端 `mp_listing_engagement()` 的 `leads_responded` 一致。
+  String get mpLeadResponded => raw('mp_lead_responded');
   String get mpLeadContacted => raw('mp_lead_contacted');
   String get mpLeadConfirmed => raw('mp_lead_confirmed');
   String get mpLeadConverted => raw('mp_lead_converted');

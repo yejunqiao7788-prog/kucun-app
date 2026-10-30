@@ -2414,7 +2414,8 @@ class _AnalyticsTabState extends State<_AnalyticsTab> {
                 Expanded(
                   child: StatTile(
                     label: l10n.mpLeads,
-                    value: '${Fmt.count(data.leads)} · ${Fmt.count(data.leadsPending)} ${l10n.mpLeadNew}',
+                    value:
+                        '${Fmt.count(data.leads)} · ${Fmt.count(data.leadsPending)} ${l10n.mpLeadNew} · ${Fmt.count(data.leadsResponded)} ${l10n.mpLeadResponded}',
                     accent: AppInk.orders,
                     icon: Icons.people_alt_rounded,
                     footnote: data.leadRate == null ? null : '${l10n.mpLeadRate} ${Fmt.percent(data.leadRate!)}',

@@ -44,9 +44,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: github.ref == 'refs/heads/main'
         with:
-          tag_name: v2.1.7
-          name: "TorgSeek库存 v2.1.7"
-          body: "「我的」顶部不再常驻付费位：还剩 30 天以上到期时，这一页不摆订阅价目表，也不再每次进来都发一次用不上的价目请求；到 30 天内（口径与服务端 expiring_30d 一致）才出现续费卡，副标题直接说「还剩 N 天到期」，已到期仍是唯一的解锁入口。账号卡上的订阅状态与到期时间照常保留，价目表与续费入口仍在财务 → 钱包与订阅，AI 钱包那部分没动。"
+          tag_name: v2.1.8
+          name: "TorgSeek库存 v2.1.8"
+          body: "集市 → 分析页的留资砖补上「已回复」：过去这一格只写「总留资 · 待处理」，卖家看不出自己答过几条。服务端这次把留资首响的口径收口 —— 点已成交/已拒绝同样算回答，集市留资生成的订单做完也算回答 —— 这个数字第一次可信，于是并进数值行，转化率脚注与其它砖没动。集市投放 CPL 的报价也在校准（成交样本按货币面额分桶，不再把 $ 与 ₴ 混进同一个中位），单价由服务端算好下发，App 侧无需改动。"
           files: build/app/outputs/flutter-apk/app-release.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

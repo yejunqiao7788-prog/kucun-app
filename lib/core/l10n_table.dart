@@ -286,6 +286,7 @@ const Map<String, List<String>> kStrings = <String, List<String>>{
   'mp_telegram_bind': <String>['绑定 chat id', 'Bind chat id', 'Прив’язати chat id', 'Gắn chat id'],
   'mp_lead_status': <String>['留资状态', 'Lead status', 'Статус ліда', 'Trạng thái lead'],
   'mp_lead_new': <String>['新留资', 'New', 'Новий', 'Mới'],
+  'mp_lead_responded': <String>['已回复', 'Answered', 'З відповіддю', 'Đã trả lời'],
   'mp_lead_contacted': <String>['已联系', 'Contacted', 'Контакт встановлено', 'Đã liên hệ'],
   'mp_lead_confirmed': <String>['已确认', 'Confirmed', 'Підтверджено', 'Đã xác nhận'],
   'mp_lead_converted': <String>['已成交', 'Converted', 'Конвертовано', 'Đã chốt'],

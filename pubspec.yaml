@@ -1,7 +1,7 @@
 name: kucun_app
 description: "TorgSeek库存 —— 原生 Flutter 客户端，直连生产 /api/business 与 Supabase Auth"
 publish_to: "none"
-version: 2.1.7+20
+version: 2.1.8+21
 
 environment:
   sdk: ">=3.6.0 <4.0.0"
