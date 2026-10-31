@@ -173,7 +173,7 @@ class _PagedViewState<T> extends State<PagedView<T>> {
 class RowCard extends StatelessWidget {
   const RowCard({
     super.key,
-    required this.title,
+    this.title,
     required this.accent,
     this.subtitle,
     this.trailing,
@@ -182,11 +182,16 @@ class RowCard extends StatelessWidget {
     this.badges = const <Widget>[],
     this.footRow,
     this.titleStyle,
-  });
+    this.identity,
+  }) : assert(title != null || identity != null, 'RowCard 要有 title 或 identity 之一');
 
-  final String title;
+  final String? title;
   final Color accent;
   final String? subtitle;
+
+  /// 商品标识行（SKU 主行 + 名称副行）。给了它就取代 title/subtitle —— 字号与
+  /// 「显示商品名称」开关都收口在 ProductIdentity 里，调用方不再各写一遍。
+  final Widget? identity;
   final Widget? trailing;
   final Widget? leading;
   final VoidCallback? onTap;
@@ -208,23 +213,26 @@ class RowCard extends StatelessWidget {
             children: <Widget>[
               if (leading != null) ...<Widget>[leading!, const HGap(10)],
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text(
-                      title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: text.titleMedium?.merge(titleStyle),
+                child: identity ??
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(
+                          title ?? '',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: text.titleMedium?.merge(titleStyle),
+                        ),
+                        if (subtitle != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 2),
+                            child: Text(subtitle!,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: text.bodySmall),
+                          ),
+                      ],
                     ),
-                    if (subtitle != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 2),
-                        child: Text(subtitle!,
-                            maxLines: 1, overflow: TextOverflow.ellipsis, style: text.bodySmall),
-                      ),
-                  ],
-                ),
               ),
               const HGap(8),
               if (trailing != null) trailing!,

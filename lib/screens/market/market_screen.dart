@@ -14,6 +14,7 @@ import '../../data/entities.dart';
 import '../../design/tokens.dart';
 import '../../design/widgets/controls.dart';
 import '../../design/widgets/paged_view.dart';
+import '../../design/widgets/product_identity.dart';
 import '../../design/widgets/sheets.dart';
 import '../../design/widgets/state_views.dart';
 import '../../design/widgets/surfaces.dart';
@@ -341,6 +342,8 @@ class _SupplyTabState extends State<_SupplyTab> {
             emptyIcon: Icons.storefront_rounded,
             itemBuilder: (BuildContext context, MpCandidate row, int index) {
               final MpListing? listing = row.listing;
+              final Product? product = row.product;
+              final String note = _candidateNote(row, l10n);
               return AppCard(
                 accent: AppInk.marketplace,
                 padding: const EdgeInsets.all(12),
@@ -348,24 +351,35 @@ class _SupplyTabState extends State<_SupplyTab> {
                 child: Row(
                   children: <Widget>[
                     Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: <Widget>[
-                          Text(
-                            row.displayTitle,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.titleMedium,
-                          ),
-                          const VGap(4),
-                          Text(
-                            _candidateNote(row, l10n),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.bodySmall,
-                          ),
-                        ],
-                      ),
+                      // 没有投影行时这一行只有申请单的公域标题，那不是库名，
+                      // 「显示商品名称」开关不该把它也关掉（关掉就成空行了）。
+                      child: product == null
+                          ? Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: <Widget>[
+                                Text(
+                                  row.displayTitle,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: Theme.of(context).textTheme.titleMedium,
+                                ),
+                                if (note.isNotEmpty) ...<Widget>[
+                                  const VGap(4),
+                                  Text(
+                                    note,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: Theme.of(context).textTheme.bodySmall,
+                                  ),
+                                ],
+                              ],
+                            )
+                          : ProductIdentity(
+                              sku: product.sku,
+                              name: product.name,
+                              showName: AppState.of(context).productNameVisible,
+                              secondary: note.isEmpty ? null : note,
+                            ),
                     ),
                     const HGap(8),
                     if (listing == null)
@@ -390,7 +404,6 @@ class _SupplyTabState extends State<_SupplyTab> {
     final Product? product = row.product;
     final MpListing? listing = row.listing;
     final List<String> parts = <String>[
-      if (product != null) product.sku,
       if (product != null) '${Fmt.count(product.quantity)} ${product.unit}',
       if (listing != null) Fmt.money(listing.price, symbol: '${listing.currency} '),
       if (listing == null && row.qualityMax > 0)
@@ -605,17 +618,11 @@ class _ListingEditorScreenState extends State<ListingEditorScreen> {
                     child: Row(
                       children: <Widget>[
                         Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: <Widget>[
-                              Text(_product.name,
-                                  style: Theme.of(context).textTheme.titleMedium),
-                              const VGap(2),
-                              Text(
-                                '${_product.sku} · ${Fmt.count(_product.quantity)} ${_product.unit}',
-                                style: Theme.of(context).textTheme.bodySmall,
-                              ),
-                            ],
+                          child: ProductIdentity(
+                            sku: _product.sku,
+                            name: _product.name,
+                            showName: AppState.of(context).productNameVisible,
+                            secondary: '${Fmt.count(_product.quantity)} ${_product.unit}',
                           ),
                         ),
                         StatusPill(
@@ -631,7 +638,9 @@ class _ListingEditorScreenState extends State<ListingEditorScreen> {
                     accent: AppInk.products,
                     child: KeyValueRow(
                       label: l10n.mpLinkedProduct,
-                      value: _origin.productName ?? _origin.productSku ?? '—',
+                      value: AppState.of(context).productNameVisible
+                          ? (_origin.productName ?? _origin.productSku ?? '—')
+                          : (_origin.productSku ?? _origin.productName ?? '—'),
                       accent: AppInk.products,
                     ),
                   ),
@@ -2474,6 +2483,13 @@ class _PerfRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final TextTheme text = Theme.of(context).textTheme;
+    final String sku = row.product.asStringOr('sku', '');
+    final String name = row.product.asStringOr('name', '');
+    // 开关只关库名：title_uk 是申请单自己的公域标题，投影行可能根本没有 product，
+    // 所以这一行的兜底永远留着，不能变成空白。
+    final String label =
+        AppState.of(context).productNameVisible && name.isNotEmpty ? name : row.title;
     return AppCard(
       accent: row.isMuted ? AppInk.textTertiary : AppInk.marketplace,
       padding: const EdgeInsets.all(12),
@@ -2484,12 +2500,21 @@ class _PerfRow extends StatelessWidget {
             children: <Widget>[
               Expanded(
                 child: Text(
-                  row.title,
+                  label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.titleMedium,
+                  // 与 SKU 同字号（单行面两者相等，SKU 靠等宽半粗读得更重）
+                  style: TextStyle(
+                    fontSize: IdentityType.sku(IdentitySize.md),
+                    fontWeight: FontWeight.w500,
+                    color: text.bodyLarge?.color,
+                  ),
                 ),
               ),
+              if (sku.isNotEmpty) ...<Widget>[
+                const HGap(8),
+                SkuText(sku: sku),
+              ],
               const HGap(8),
               if (row.isMuted)
                 StatusPill(label: l10n.mpMuted, color: AppInk.danger, dense: true)

@@ -179,6 +179,10 @@ class Order extends JsonMap {
   List<OrderItem> get items =>
       asRawList('items').map(OrderItem.new).toList(growable: false);
   int get itemCount => items.length;
+
+  /// `dashboard/orders` 的备货队列专用：去重后的整份 SKU 清单（服务端不截断，
+  /// 展示口径只由 Fmt.skuSummary 裁决一次）。订单详情那一面走 [items]。
+  List<String> get skus => asStringList('skus');
 }
 
 class OrderItem extends JsonMap {
@@ -1344,6 +1348,10 @@ class MpAnalyticsRow extends JsonMap {
   String? get slug => asString('slug');
   String get title => asStringOr('title_uk', '—');
 
+  /// 服务端在表现行里带一份精简商品 `{id,name,sku}`（读不到申请单时为 null）。
+  /// 库名受「显示商品名称」开关管，公域标题 [title] 不受 —— 那一行永远不能空白。
+  JsonMap get product => asMap('product');
+
   /// `status` 可能为 null（投影行有了但申请单读不到）。
   String? get rawStatus => asString('status');
   ListingStatus get status => ListingStatus.parse(rawStatus);
@@ -1587,7 +1595,10 @@ class Paged<T> {
   );
 }
 
-/// 打印模板设置：三枚开关 + 四段文案，`show_image` 的默认值是 false。
+/// 打印模板设置：四枚开关 + 四段文案，`show_image` 的默认值是 false。
+///
+/// `show_product_name` 不只管单据 —— 它是每租户一行的显示偏好，商品/库存/订单/备货清单
+/// 都读同一份（裁决点在 AppState.productNameVisible）。
 class PrintSettings extends JsonMap {
   const PrintSettings(super.json);
 
@@ -1596,6 +1607,7 @@ class PrintSettings extends JsonMap {
     'show_price': true,
     'show_sku': true,
     'show_image': false,
+    'show_product_name': true,
   });
 
   String get templateId => asStringOr('template_id', 'standard');
@@ -1607,7 +1619,10 @@ class PrintSettings extends JsonMap {
   bool get showSku => asBool('show_sku', fallback: true);
   bool get showImage => asBool('show_image');
 
-  /// 服务端只认这八列，整行原样贴回去会多带 tenant_id / updated_at 等无关键。
+  /// 默认 true 是刻意的：偏好还没读回来时猜「隐藏」会让商品名闪一下再消失。
+  bool get showProductName => asBool('show_product_name', fallback: true);
+
+  /// 服务端只认这九列，整行原样贴回去会多带 tenant_id / updated_at 等无关键。
   Map<String, Object?> toPayload() => <String, Object?>{
         'template_id': templateId,
         'company_name': companyName,
@@ -1617,6 +1632,7 @@ class PrintSettings extends JsonMap {
         'show_price': showPrice,
         'show_sku': showSku,
         'show_image': showImage,
+        'show_product_name': showProductName,
       };
 
   PrintSettings copyWith({
@@ -1628,6 +1644,7 @@ class PrintSettings extends JsonMap {
     bool? showPrice,
     bool? showSku,
     bool? showImage,
+    bool? showProductName,
   }) =>
       PrintSettings(<String, Object?>{
         ...json,
@@ -1639,5 +1656,6 @@ class PrintSettings extends JsonMap {
         'show_price': showPrice ?? this.showPrice,
         'show_sku': showSku ?? this.showSku,
         'show_image': showImage ?? this.showImage,
+        'show_product_name': showProductName ?? this.showProductName,
       });
 }

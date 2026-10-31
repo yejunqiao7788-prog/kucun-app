@@ -12,6 +12,7 @@ import '../../data/repositories.dart';
 import '../../design/tokens.dart';
 import '../../design/widgets/controls.dart';
 import '../../design/widgets/paged_view.dart';
+import '../../design/widgets/product_identity.dart';
 import '../../design/widgets/sheets.dart';
 import '../../design/widgets/surfaces.dart';
 import '../../state/app_state.dart';
@@ -453,10 +454,12 @@ class _ProductRow extends StatelessWidget {
       child: RowCard(
         accent: AppInk.products,
         onTap: onTap,
-        title: product.name,
-        subtitle: product.sku.isEmpty
-            ? (product.categoryName ?? '')
-            : '${product.sku} · ${product.categoryName ?? l10n.commonNone}',
+        identity: ProductIdentity(
+          sku: product.sku,
+          name: product.name,
+          showName: app.productNameVisible,
+          secondary: product.categoryName ?? l10n.commonNone,
+        ),
         leading: selecting
             ? Icon(
                 selected ? Icons.check_circle_rounded : Icons.circle_outlined,

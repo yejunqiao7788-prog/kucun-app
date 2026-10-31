@@ -1,11 +1,12 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pdf/widgets.dart' as pw;
 import 'package:kucun_app/core/l10n.dart';
 import 'package:kucun_app/core/print_sheet.dart';
 import 'package:kucun_app/data/entities.dart';
 
 /// 单据 PDF 的两个真实风险：随包带的字形能不能被 pdf 引擎吃下（Noto Sans SC 缺乌克兰语
-/// є/ї 与越南语变音，靠 Noto Sans 兜底），以及 print-settings 的三个开关会不会把表格
+/// є/ї 与越南语变音，靠 Noto Sans 兜底），以及 print-settings 的四个开关会不会把表格
 /// 列数配崩。这里都不连网、不进设备。
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -65,7 +66,7 @@ void main() {
     expect(pdf.lengthInBytes, greaterThan(4000));
   });
 
-  test('三个显示开关各自裁剪列数，四种组合都排得下', () async {
+  test('价格/SKU/图片三个开关各自裁剪列数（名称开着），四种组合都排得下', () async {
     for (final String lang in <String>['zh', 'en', 'uk', 'vi']) {
       final L10n l10n = L10n(lang);
       for (final PrintSettings settings in <PrintSettings>[
@@ -115,5 +116,86 @@ void main() {
       generatedAt: DateTime.parse('2026-10-28T15:30:00'),
     );
     expect(String.fromCharCodes(pdf.take(5)), '%PDF-');
+  });
+
+  /// 四个开关 = 16 种列组合。pdf 的 TableRow 没有 colspan，合计行与空行都按同一份列数
+  /// 逐格补齐，所以这里逐格对账：列数、合计标签格、数量格，三者不许重合或越界。
+  group('SheetLayout 16 种开关组合', () {
+    for (final bool name in <bool>[true, false]) {
+      for (final bool sku in <bool>[true, false]) {
+        for (final bool price in <bool>[true, false]) {
+          for (final bool image in <bool>[true, false]) {
+            final String label = 'name=$name sku=$sku price=$price image=$image';
+            test(label, () {
+              final SheetLayout layout = SheetLayout(
+                showImage: image,
+                showName: name,
+                showSku: sku,
+                showPrice: price,
+                imgMm: 16,
+              );
+              expect(
+                layout.count,
+                2 + (name ? 1 : 0) + (sku ? 1 : 0) + (image ? 1 : 0) + (price ? 2 : 0),
+                reason: label,
+              );
+              expect(layout.labelAt, inInclusiveRange(0, layout.count - 1));
+              expect(layout.qtyAt, inInclusiveRange(0, layout.count - 1));
+              // 合计标签与总数量落在同一格 = 数量被「合计」两个字盖掉。
+              expect(layout.labelAt, isNot(layout.qtyAt), reason: label);
+              if (name) {
+                expect(layout.labelAt, layout.nameAt);
+              } else if (sku) {
+                expect(layout.labelAt, layout.skuAt);
+              } else {
+                expect(layout.labelAt, 0, reason: '两个都关时退到序号列');
+              }
+              if (sku) {
+                // 名称列关掉后，码这一格接管腾出来的宽度，不再是固定 92。
+                expect(
+                  layout.columns[layout.skuAt],
+                  name ? isA<pw.FixedColumnWidth>() : isA<pw.FlexColumnWidth>(),
+                  reason: label,
+                );
+              }
+            });
+          }
+        }
+      }
+    }
+  });
+
+  test('关掉名称：单据照样出得来，四种语言 × 两种模板都不塌', () async {
+    for (final String lang in <String>['zh', 'en', 'uk', 'vi']) {
+      for (final String template in <String>['standard', 'compact']) {
+        final Uint8List pdf = await render(
+          PrintSettings(<String, Object?>{
+            'template_id': template,
+            'show_price': true,
+            'show_sku': true,
+            'show_image': false,
+            'show_product_name': false,
+          }),
+          L10n(lang),
+        );
+        expect(String.fromCharCodes(pdf.take(5)), '%PDF-', reason: '$lang / $template');
+        expect(pdf.lengthInBytes, greaterThan(4000), reason: '$lang / $template');
+      }
+    }
+  });
+
+  test('名称开关默认 true：服务端没给这一列时不能把名称藏起来', () {
+    expect(PrintSettings.defaults.showProductName, isTrue);
+    expect(const PrintSettings(<String, Object?>{}).showProductName, isTrue);
+    expect(
+      const PrintSettings(<String, Object?>{'show_product_name': false}).showProductName,
+      isFalse,
+    );
+    // 整行 upsert 的白名单必须带上它，否则保存一次就把租户的选择冲掉。
+    expect(PrintSettings.defaults.toPayload().containsKey('show_product_name'), isTrue);
+    expect(
+      PrintSettings.defaults.copyWith(showProductName: false).toPayload()['show_product_name'],
+      isFalse,
+    );
   });
 }

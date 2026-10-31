@@ -9,6 +9,7 @@ import '../../data/entities.dart';
 import '../../data/repositories.dart';
 import '../../design/tokens.dart';
 import '../../design/widgets/controls.dart';
+import '../../design/widgets/product_identity.dart';
 import '../../design/widgets/sheets.dart';
 import '../../design/widgets/state_views.dart';
 import '../../design/widgets/surfaces.dart';
@@ -137,6 +138,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     log: log,
                     l10n: l10n,
                     currency: app.profile.currencySymbol,
+                    showName: app.productNameVisible,
                   ),
                 ),
             ],
@@ -157,11 +159,15 @@ class LogRowCard extends StatelessWidget {
     required this.log,
     required this.l10n,
     required this.currency,
+    this.showName = true,
   });
 
   final OperationLog log;
   final L10n l10n;
   final String currency;
+
+  /// 租户级「显示商品名称」，读 AppState.productNameVisible。
+  final bool showName;
 
   static Color _actionColor(String operation) => switch (operation) {
         'CREATE' => AppInk.ai,
@@ -185,7 +191,7 @@ class LogRowCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final Color accent = _actionColor(log.action);
     final String sku = log.productSku;
-    final String objectName = logObjectLabel(l10n, log);
+    final String objectName = logObjectLabel(l10n, log, showName: showName);
     final List<String> chips = logChangeChips(l10n, log, currency: currency);
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
@@ -231,7 +237,8 @@ class LogRowCard extends StatelessWidget {
                     spacing: 6,
                     runSpacing: 4,
                     children: <Widget>[
-                      if (sku.isNotEmpty && objectName != sku) _MetaChip(text: sku, muted: true),
+                      if (sku.isNotEmpty && objectName != sku)
+                        _MetaChip(text: sku, isSku: true),
                       for (final String chip in chips) _MetaChip(text: chip),
                     ],
                   ),
@@ -253,25 +260,28 @@ class LogRowCard extends StatelessWidget {
 }
 
 /// 变更/SKU 的小块：淡底微字，和上方的动作文案分层。
+/// SKU 那一块例外 —— 码走 SkuText 的字号（恒 ≥ 名称），不再压成 micro 灰字。
 class _MetaChip extends StatelessWidget {
-  const _MetaChip({required this.text, this.muted = false});
+  const _MetaChip({required this.text, this.isSku = false});
 
   final String text;
-  final bool muted;
+  final bool isSku;
 
   @override
   Widget build(BuildContext context) {
-    final Color ink = muted ? AppInk.textTertiary : AppInk.textSecondary;
+    const Color ink = AppInk.textSecondary;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
       decoration: BoxDecoration(
         color: AppInk.tint(ink, alpha: 0.12),
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Text(
-        text,
-        style: TextStyle(fontSize: AppType.micro, color: ink),
-      ),
+      child: isSku
+          ? SkuText(sku: text, size: IdentitySize.sm)
+          : Text(
+              text,
+              style: TextStyle(fontSize: AppType.micro, color: ink),
+            ),
     );
   }
 }
@@ -342,6 +352,12 @@ class _PickingList extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
                           Text(order.orderNumber, style: Theme.of(context).textTheme.titleMedium),
+                          // 备货清单是拣货作业队列：码要在这一行就读得到，不必点进订单详情。
+                          // 服务端交回未截断的去重清单，截断只由 Fmt.skuSummary 裁决一次。
+                          if (Fmt.skuSummary(order.skus).isNotEmpty) ...<Widget>[
+                            const VGap(2),
+                            SkuText(sku: Fmt.skuSummary(order.skus), size: IdentitySize.sm),
+                          ],
                           const VGap(2),
                           Text(
                             order.customerName,

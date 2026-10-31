@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:kucun_app/core/l10n.dart';
 import 'package:kucun_app/core/log_labels.dart';
 import 'package:kucun_app/data/entities.dart';
+import 'package:kucun_app/design/widgets/product_identity.dart';
 import 'package:kucun_app/screens/dashboard/dashboard_screen.dart';
 
 /// 首页动态一行的排版。改动都落在「看得见」这一层：名字有没有被挤掉、
@@ -26,10 +28,13 @@ void main() {
     });
   }
 
-  Widget pump(OperationLog row) => MaterialApp(
+  Widget pump(OperationLog row, {bool showName = true}) => MaterialApp(
         home: Scaffold(
           body: Center(
-            child: SizedBox(width: 360, child: LogRowCard(log: row, l10n: zh, currency: r'$')),
+            child: SizedBox(
+              width: 360,
+              child: LogRowCard(log: row, l10n: zh, currency: r'$', showName: showName),
+            ),
           ),
         ),
       );
@@ -226,5 +231,47 @@ void main() {
     expect(foot.width, greaterThan(100));
     expect(tester.getRect(find.byIcon(Icons.edit_rounded)).width, greaterThanOrEqualTo(16));
     expect(tester.getRect(find.text('修改')).top, closeTo(tester.getRect(find.text('阿胶固元糕 500g 礼盒装 附赠手提袋')).top, 20));
+  });
+
+  testWidgets('关掉名称：对象行由码接管，且不再重复摆一个同样的 SKU 块',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(pump(log(), showName: false));
+    await tester.pumpAndSettle();
+
+    expect(find.text('AJ001'), findsOneWidget);
+    expect(find.text('阿胶固元糕 500g 礼盒装 附赠手提袋'), findsNothing);
+  });
+
+  testWidgets('SKU 块不再压成 micro 灰字：码的字号大于同排的变更块',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(pump(log(changes: <String, Object?>{
+      'price': <String, Object?>{'from': 12.5, 'to': 15},
+    })));
+    await tester.pumpAndSettle();
+
+    double fontOf(String text) =>
+        tester.renderObject<RenderParagraph>(find.text(text)).text.style!.fontSize!;
+    expect(fontOf('AJ001'), IdentityType.sku(IdentitySize.sm));
+    expect(fontOf('AJ001'), greaterThan(fontOf('售价 \$12.50 → \$15.00')));
+    expect(tester.getSize(find.text('AJ001')).width, greaterThan(0));
+  });
+
+  testWidgets('没有码的系统写：关掉名称也照样读出那一句汇总，不留「—」',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(pump(
+      OperationLog(<String, Object?>{
+        'operation_type': 'DELETE',
+        'details': <String, Object?>{
+          'kind': 'retention_cleanup',
+          'name': '保留策略清理：零库存满 90 天软删 12 件',
+          'soft_deleted_count': 12,
+        },
+      }),
+      showName: false,
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('—'), findsNothing);
+    expect(find.text('保留策略清理：零库存满 90 天软删 12 件'), findsOneWidget);
   });
 }

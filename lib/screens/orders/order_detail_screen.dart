@@ -13,6 +13,7 @@ import '../../data/repositories.dart';
 import '../../design/tokens.dart';
 import '../../design/widgets/controls.dart';
 import '../../design/widgets/paged_view.dart' show RowCard, Thumbnail;
+import '../../design/widgets/product_identity.dart';
 import '../../design/widgets/sheets.dart';
 import '../../design/widgets/state_views.dart';
 import '../../design/widgets/surfaces.dart';
@@ -599,11 +600,13 @@ class _ItemRow extends StatelessWidget {
       leading: Thumbnail(
         url: item.imageUrl ?? (item.imageUrls.isEmpty ? null : item.imageUrls.first),
       ),
-      title: item.productName.isEmpty ? item.productSku : item.productName,
-      subtitle: <String>[
-        item.productSku,
-        if ((item.categoryName ?? '').isNotEmpty) item.categoryName!,
-      ].join(' · '),
+      identity: ProductIdentity(
+        sku: item.productSku,
+        name: item.productName,
+        showName: app.productNameVisible,
+        secondary: (item.categoryName ?? '').isEmpty ? null : item.categoryName,
+        struck: picked > 0 && picked >= item.quantity,
+      ),
       trailing: editable
           ? RoundIconButton(icon: Icons.edit_rounded, size: 38, onPressed: onEdit)
           : null,
@@ -718,11 +721,12 @@ class _PickingLine extends StatelessWidget {
           ),
           const HGap(8),
           Expanded(
-            child: Text(
-              item.productName.isEmpty ? item.productSku : item.productName,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.bodyMedium,
+            child: ProductIdentity(
+              sku: item.productSku,
+              name: item.productName,
+              size: IdentitySize.sm,
+              struck: done,
+              showName: AppState.of(context).productNameVisible,
             ),
           ),
           const HGap(6),

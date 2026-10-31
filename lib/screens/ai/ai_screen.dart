@@ -18,6 +18,7 @@ import '../../data/entities.dart';
 import '../../data/repositories.dart';
 import '../../design/tokens.dart';
 import '../../design/widgets/controls.dart';
+import '../../design/widgets/product_identity.dart';
 import '../../design/widgets/sheets.dart';
 import '../../design/widgets/state_views.dart';
 import '../../design/widgets/surfaces.dart';
@@ -643,9 +644,13 @@ class _AiScreenState extends State<AiScreen> {
                     (InventoryRow row) => TileRow(
                       icon: Icons.inventory_2_rounded,
                       accent: AppInk.showroom,
-                      title: row.name,
-                      subtitle: '${row.sku} · ${Fmt.count(row.quantity)} / ${l10n.prodMinStock} ${Fmt.count(row.minStock)}'
-                          '${row.location == null ? '' : ' · ${row.location}'}',
+                      identity: ProductIdentity(
+                        sku: row.sku,
+                        name: row.name,
+                        showName: AppState.of(context).productNameVisible,
+                        secondary: '${Fmt.count(row.quantity)} / ${l10n.prodMinStock} ${Fmt.count(row.minStock)}'
+                            '${row.location == null ? '' : ' · ${row.location}'}',
+                      ),
                       trailing: StatusPill(
                         label: row.quantity <= 0 ? l10n.invOutOf : l10n.invLow,
                         color: row.quantity <= 0 ? AppInk.danger : AppInk.showroom,
@@ -687,7 +692,8 @@ class _AiScreenState extends State<AiScreen> {
                   .take(15)
                   .map((OperationLog log) => KeyValueRow(
                         label: Fmt.dateTime(log.createdAt),
-                        value: logLine(l10n, log),
+                        value: logLine(l10n, log,
+                            showName: AppState.of(context).productNameVisible),
                       ))
                   .toList(growable: false),
             ),
@@ -770,9 +776,13 @@ class _AiScreenState extends State<AiScreen> {
                 (InventoryRow row) => TileRow(
                   icon: Icons.inventory_2_rounded,
                   accent: AppInk.products,
-                  title: row.name,
-                  subtitle: '${row.sku} · ${Fmt.count(row.quantity)} ${row.unit}'
-                      '${row.location == null || row.location!.isEmpty ? '' : ' · ${row.location}'}',
+                  identity: ProductIdentity(
+                    sku: row.sku,
+                    name: row.name,
+                    showName: AppState.of(context).productNameVisible,
+                    secondary: '${Fmt.count(row.quantity)} ${row.unit}'
+                        '${row.location == null || row.location!.isEmpty ? '' : ' · ${row.location}'}',
+                  ),
                 ),
               )
               .toList(growable: false),

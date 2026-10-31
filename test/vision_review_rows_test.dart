@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:kucun_app/core/l10n.dart';
 import 'package:kucun_app/data/entities.dart';
+import 'package:kucun_app/design/widgets/product_identity.dart';
 import 'package:kucun_app/screens/orders/vision_review_screen.dart';
 import 'package:kucun_app/state/vision_review_model.dart';
 
@@ -29,7 +31,8 @@ void main() {
         'match_kind': 'sku_folded',
       };
 
-  Widget pump(VisionLine line, VisionRowStatus status, {Product? resolved}) {
+  Widget pump(VisionLine line, VisionRowStatus status,
+      {Product? resolved, bool showName = true}) {
     return MaterialApp(
       home: Scaffold(
         body: Center(
@@ -43,6 +46,7 @@ void main() {
               qty: 12,
               currency: '¥',
               l10n: l10n,
+              showName: showName,
               onToggle: () {},
               onChoose: (_) {},
               onReselect: () {},
@@ -113,5 +117,59 @@ void main() {
 
     expect(tester.takeException(), isNull);
     expect(find.textContaining('无码散件'), findsWidgets);
+  });
+
+  testWidgets('码的字号不小于库位名：复核页照着码找货，码不能被压成小字',
+      (WidgetTester tester) async {
+    final VisionLine line = VisionLine(<String, Object?>{
+      'matched': true,
+      'confidence': 0.93,
+      'product': row('p1', 'AJ-001'),
+      'candidates': <Object?>[candidate('p1', 'AJ-001')],
+      'hint': <String, Object?>{'sku_hint': 'AJ-001', 'qty': 12},
+    });
+    await tester.pumpWidget(pump(line, VisionRowStatus.ready, resolved: line.product));
+    await tester.pumpAndSettle();
+
+    double fontOf(String text) =>
+        tester.renderObject<RenderParagraph>(find.text(text).first).text.style!.fontSize!;
+    const String name = '阿胶固元糕 500g 礼盒装 附赠手提袋与说明书一份';
+    expect(fontOf('AJ-001'), IdentityType.sku(IdentitySize.md));
+    expect(fontOf('AJ-001'), greaterThanOrEqualTo(fontOf(name)));
+    expect(tester.getSize(find.text('AJ-001').first).width, greaterThan(0));
+  });
+
+  testWidgets('关掉名称：已确定行与候选行都只剩码，柜名/箱价这些作业信息不跟着消失',
+      (WidgetTester tester) async {
+    const String name = '阿胶固元糕 500g 礼盒装 附赠手提袋与说明书一份';
+    final VisionLine ready = VisionLine(<String, Object?>{
+      'matched': true,
+      'confidence': 0.93,
+      'product': row('p1', 'AJ-001'),
+      'candidates': <Object?>[candidate('p1', 'AJ-001')],
+      'hint': <String, Object?>{'sku_hint': 'AJ-001', 'qty': 12},
+    });
+    await tester.pumpWidget(
+        pump(ready, VisionRowStatus.ready, resolved: ready.product, showName: false));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.text('AJ-001'), findsOneWidget);
+    expect(find.text(name), findsNothing);
+    expect(find.textContaining('东柜·阿胶区'), findsWidgets);
+    expect(find.textContaining('822'), findsWidgets);
+
+    final VisionLine pick = VisionLine(<String, Object?>{
+      'matched': false,
+      'ambiguous': true,
+      'group_size': 2,
+      'candidates': <Object?>[candidate('p2a', 'AJ-002'), candidate('p2b', 'AJ-002')],
+      'hint': <String, Object?>{'sku_hint': 'AJ-002', 'qty': 2},
+    });
+    await tester.pumpWidget(pump(pick, VisionRowStatus.needsPick, showName: false));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.text('AJ-002'), findsNWidgets(2));
+    expect(find.text(name), findsNothing);
+    expect(find.textContaining('西柜·阿胶区'), findsOneWidget);
   });
 }

@@ -36,6 +36,21 @@ class Fmt {
   static String signedCount(num value) =>
       value > 0 ? '+${count(value)}' : count(value);
 
+  /// 订单列表 / 备货清单共用的 SKU 摘要口径（网页端 `api/orders.ts` 的 skuSummary）。
+  ///
+  /// 服务端 `dashboard/orders` 交回的是**未截断**的去重清单，截断只在这里裁决一次；
+  /// 返回空串表示「这一单没有可用的码」，调用方据此整行不渲染，而不是印一个「—」。
+  static String skuSummary(Iterable<String?> skus, {int max = 3}) {
+    final List<String> list = <String>[];
+    for (final String? raw in skus) {
+      final String value = (raw ?? '').trim();
+      if (value.isNotEmpty && !list.contains(value)) list.add(value);
+    }
+    if (list.isEmpty) return '';
+    final String head = list.take(max).join(' · ');
+    return list.length > max ? '$head +${list.length - max}' : head;
+  }
+
   static String percent(double ratio, {int digits = 1}) =>
       '${(ratio * 100).toStringAsFixed(digits)}%';
 

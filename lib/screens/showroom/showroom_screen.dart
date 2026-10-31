@@ -12,6 +12,7 @@ import '../../core/l10n.dart';
 import '../../data/entities.dart';
 import '../../design/tokens.dart';
 import '../../design/widgets/controls.dart';
+import '../../design/widgets/product_identity.dart';
 import '../../design/widgets/sheets.dart';
 import '../../design/widgets/state_views.dart';
 import '../../design/widgets/surfaces.dart';
@@ -1023,16 +1024,11 @@ class _ShelfRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                Text(
-                  line.name.isEmpty ? line.sku : line.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: AppType.body,
-                    fontWeight: AppType.semi,
-                    decoration: line.visible ? null : TextDecoration.lineThrough,
-                    color: line.visible ? null : AppInk.textTertiary,
-                  ),
+                ProductIdentity(
+                  sku: line.sku,
+                  name: line.name,
+                  showName: AppState.of(context).productNameVisible,
+                  struck: !line.visible,
                 ),
                 const VGap(4),
                 Row(
@@ -1190,21 +1186,12 @@ class _ProductPickerScreenState extends State<_ProductPickerScreen> {
                                 child: Row(
                                   children: <Widget>[
                                     Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: <Widget>[
-                                          Text(
-                                            product.name,
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: Theme.of(context).textTheme.titleSmall,
-                                          ),
-                                          const VGap(2),
-                                          Text(
-                                            '${product.sku} · ${Fmt.money(product.price, symbol: _app.profile.currencySymbol)}',
-                                            style: Theme.of(context).textTheme.bodySmall,
-                                          ),
-                                        ],
+                                      child: ProductIdentity(
+                                        sku: product.sku,
+                                        name: product.name,
+                                        showName: _app.productNameVisible,
+                                        secondary: Fmt.money(product.price,
+                                            symbol: _app.profile.currencySymbol),
                                       ),
                                     ),
                                     Icon(

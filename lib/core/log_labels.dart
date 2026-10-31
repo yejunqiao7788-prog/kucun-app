@@ -140,9 +140,12 @@ String _batchValueLabel(Object? value, String mode, String? currency) {
   return amount == null ? plain : Fmt.money(amount, symbol: currency ?? '');
 }
 
-/// 动态行的对象名。网页端是 `details.name ?? details.sku ?? '—'`，但批量改价与外部同步
-/// 两支服务端两个键都没写，手机上就是一个孤零零的「—」，读不出这一行说的是什么。
-String logObjectLabel(L10n l10n, OperationLog log) {
+/// 动态行的对象名。网页端是 `(showName && details.name) || details.sku || '—'`，但批量改价
+/// 与外部同步两支服务端两个键都没写，手机上就是一个孤零零的「—」，读不出这一行说的是什么。
+///
+/// 关掉名称时优先读码；没有码的系统写仍回落到那一句汇总，不留「—」。
+String logObjectLabel(L10n l10n, OperationLog log, {bool showName = true}) {
+  if (!showName && log.productSku.isNotEmpty) return log.productSku;
   final String target = log.target;
   if (target != '—') return target;
   final details = log.details;
@@ -161,12 +164,12 @@ String logActorLabel(L10n l10n, OperationLog log) =>
     log.actor.isEmpty ? l10n.dashLogSystem : log.actor;
 
 /// 一行读完的动态：谁 · 做了什么 · 哪件货（带变更）。网页端是三段小块，移动端压成一行。
-String logLine(L10n l10n, OperationLog log) {
+String logLine(L10n l10n, OperationLog log, {bool showName = true}) {
   final String changes = logChangesLine(l10n, log);
   final List<String> parts = <String>[
     logActorLabel(l10n, log),
     logActionLabel(l10n, log.action),
-    logObjectLabel(l10n, log),
+    logObjectLabel(l10n, log, showName: showName),
     if (changes.isNotEmpty) changes,
   ];
   return parts.join(' · ');

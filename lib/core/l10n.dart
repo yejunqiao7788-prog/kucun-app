@@ -765,6 +765,9 @@ class L10n {
   String get setPrintHeader => raw('set_print_header');
   String get setPrintLogo => raw('set_print_logo');
   String get setPrintNote => raw('set_print_note');
+  String get setPrintIdentityRequired => raw('set_print_identity_required');
+  String get setPrintShowName => raw('set_print_show_name');
+  String get setPrintShowNameHint => raw('set_print_show_name_hint');
   String get setPrintShowImage => raw('set_print_show_image');
   String get setPrintShowPrice => raw('set_print_show_price');
   String get setPrintShowSku => raw('set_print_show_sku');

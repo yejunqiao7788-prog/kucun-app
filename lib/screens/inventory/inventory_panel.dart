@@ -10,6 +10,7 @@ import '../../data/repositories.dart';
 import '../../design/tokens.dart';
 import '../../design/widgets/controls.dart';
 import '../../design/widgets/paged_view.dart';
+import '../../design/widgets/product_identity.dart';
 import '../../design/widgets/sheets.dart';
 import '../../design/widgets/state_views.dart';
 import '../../design/widgets/surfaces.dart';
@@ -288,8 +289,12 @@ class _InventoryPanelState extends State<InventoryPanel> {
     return RowCard(
       accent: AppInk.inventory,
       onTap: () => _adjust(row),
-      title: row.name,
-      subtitle: '${row.sku} · ${row.categoryName ?? l10n.commonNone}',
+      identity: ProductIdentity(
+        sku: row.sku,
+        name: row.name,
+        showName: AppState.of(context).productNameVisible,
+        secondary: row.categoryName ?? l10n.commonNone,
+      ),
       leading: Thumbnail(url: row.imageUrl),
       trailing: Column(
         crossAxisAlignment: CrossAxisAlignment.end,

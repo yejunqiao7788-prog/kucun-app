@@ -1351,6 +1351,7 @@ class _PrintSettingsScreenState extends State<PrintSettingsScreen> {
   bool _showPrice = true;
   bool _showSku = true;
   bool _showImage = false;
+  bool _showProductName = true;
   bool _seeded = false;
   bool _saving = false;
 
@@ -1380,6 +1381,7 @@ class _PrintSettingsScreenState extends State<PrintSettingsScreen> {
     _showPrice = values.showPrice;
     _showSku = values.showSku;
     _showImage = values.showImage;
+    _showProductName = values.showProductName;
   }
 
   @override
@@ -1428,6 +1430,13 @@ class _PrintSettingsScreenState extends State<PrintSettingsScreen> {
                     ),
                     const VGap(6),
                     SwitchRow(
+                      label: l10n.setPrintShowName,
+                      note: l10n.setPrintShowNameHint,
+                      value: _showProductName,
+                      accent: AppInk.products,
+                      onChanged: (bool v) => _toggleIdentity(name: v, sku: _showSku),
+                    ),
+                    SwitchRow(
                       label: l10n.setPrintShowPrice,
                       value: _showPrice,
                       accent: AppInk.products,
@@ -1437,7 +1446,7 @@ class _PrintSettingsScreenState extends State<PrintSettingsScreen> {
                       label: l10n.setPrintShowSku,
                       value: _showSku,
                       accent: AppInk.products,
-                      onChanged: (bool v) => setState(() => _showSku = v),
+                      onChanged: (bool v) => _toggleIdentity(name: _showProductName, sku: v),
                     ),
                     SwitchRow(
                       label: l10n.setPrintShowImage,
@@ -1480,6 +1489,19 @@ class _PrintSettingsScreenState extends State<PrintSettingsScreen> {
     );
   }
 
+  /// 名称与 SKU 不能同时关掉：两个都关，单据和界面上这一行就没有任何商品标识，
+  /// 拣货的人无从下手。服务端同样拦这一条，这里只是别让人白点一次。
+  void _toggleIdentity({required bool name, required bool sku}) {
+    if (!name && !sku) {
+      showToast(context, _app.l10n.setPrintIdentityRequired, danger: true);
+      return;
+    }
+    setState(() {
+      _showProductName = name;
+      _showSku = sku;
+    });
+  }
+
   Future<void> _save() async {
     final L10n l10n = _app.l10n;
     final PrintSettings payload = PrintSettings(<String, Object?>{
@@ -1491,6 +1513,7 @@ class _PrintSettingsScreenState extends State<PrintSettingsScreen> {
       'show_price': _showPrice,
       'show_sku': _showSku,
       'show_image': _showImage,
+      'show_product_name': _showProductName,
     });
     setState(() => _saving = true);
     try {
@@ -1501,6 +1524,8 @@ class _PrintSettingsScreenState extends State<PrintSettingsScreen> {
       _seeded = false;
       _loader.value = saved;
       _seed(saved);
+      // 各作业面立刻跟着变，不必等重新进 App
+      _app.setProductNameVisible(saved.showProductName);
       setState(() => _saving = false);
       showToast(context, l10n.commonSaved);
     } on Object catch (error) {

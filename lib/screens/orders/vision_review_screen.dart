@@ -8,6 +8,7 @@ import '../../core/l10n.dart';
 import '../../data/entities.dart';
 import '../../design/tokens.dart';
 import '../../design/widgets/controls.dart';
+import '../../design/widgets/product_identity.dart';
 import '../../design/widgets/state_views.dart';
 import '../../design/widgets/surfaces.dart';
 import '../../state/app_state.dart';
@@ -334,6 +335,7 @@ class _VisionReviewScreenState extends State<VisionReviewScreen> {
                       qty: model.qtyOf(index),
                       currency: AppState.of(context).profile.currencySymbol,
                       l10n: l10n,
+                      showName: AppState.of(context).productNameVisible,
                       onToggle: () => setState(() => model.toggle(index)),
                       onChoose: (Product product) =>
                           setState(() => model.choose(index, product)),
@@ -404,6 +406,7 @@ class VisionRowCard extends StatelessWidget {
     required this.qty,
     required this.currency,
     required this.l10n,
+    this.showName = true,
     required this.onToggle,
     required this.onChoose,
     required this.onReselect,
@@ -418,6 +421,10 @@ class VisionRowCard extends StatelessWidget {
   final int qty;
   final String currency;
   final L10n l10n;
+
+  /// 租户级「显示商品名称」。与 currency/l10n 一样由调用方传进来 ——
+  /// 这一行要在没有 Provider 的测试里真的摆一遍，不能自己去读 AppState。
+  final bool showName;
   final VoidCallback onToggle;
   final ValueChanged<Product> onChoose;
   final VoidCallback onReselect;
@@ -505,6 +512,7 @@ class VisionRowCard extends StatelessWidget {
             product: resolved!,
             currency: currency,
             l10n: l10n,
+            showName: showName,
             onTap: onToggle,
             onReselect: onReselect,
           )
@@ -529,6 +537,7 @@ class VisionRowCard extends StatelessWidget {
                 picked: resolved?.id == candidate.id,
                 currency: currency,
                 l10n: l10n,
+                showName: showName,
                 onTap: () => onChoose(candidate.product),
               ),
             ),
@@ -548,6 +557,7 @@ class _ResolvedBlock extends StatelessWidget {
     required this.product,
     required this.currency,
     required this.l10n,
+    required this.showName,
     required this.onTap,
     required this.onReselect,
   });
@@ -555,6 +565,7 @@ class _ResolvedBlock extends StatelessWidget {
   final Product product;
   final String currency;
   final L10n l10n;
+  final bool showName;
   final VoidCallback onTap;
   final VoidCallback onReselect;
 
@@ -569,7 +580,7 @@ class _ResolvedBlock extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                _SkuName(sku: product.sku, name: product.name),
+                _SkuName(sku: product.sku, name: product.name, showName: showName),
                 const VGap(4),
                 _chips(context, product, currency, l10n),
               ],
@@ -594,6 +605,7 @@ class _CandidateTile extends StatelessWidget {
     required this.picked,
     required this.currency,
     required this.l10n,
+    required this.showName,
     required this.onTap,
   });
 
@@ -601,6 +613,7 @@ class _CandidateTile extends StatelessWidget {
   final bool picked;
   final String currency;
   final L10n l10n;
+  final bool showName;
   final VoidCallback onTap;
 
   @override
@@ -623,7 +636,7 @@ class _CandidateTile extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                _SkuName(sku: candidate.sku, name: candidate.name),
+                _SkuName(sku: candidate.sku, name: candidate.name, showName: showName),
                 const VGap(4),
                 Wrap(
                   spacing: 6,
@@ -662,29 +675,34 @@ class _KindPill extends StatelessWidget {
 }
 
 class _SkuName extends StatelessWidget {
-  const _SkuName({required this.sku, required this.name});
+  const _SkuName({required this.sku, required this.name, required this.showName});
 
   final String sku;
   final String name;
+  final bool showName;
 
   @override
   Widget build(BuildContext context) {
+    final TextTheme text = Theme.of(context).textTheme;
     return Wrap(
       spacing: 6,
       runSpacing: 2,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: <Widget>[
-        Text(sku,
-            style: const TextStyle(
-                fontSize: AppType.body,
-                fontWeight: AppType.heavy,
-                fontFamily: 'monospace')),
+        SkuText(sku: sku, maxLines: 2),
         // 与网页端 `min-w-0`（移动端不 truncate）一致：库位名跟着码排在同一行，
         // 放不下就自己折行，最多两行后截断。Wrap 里不能放 Flexible。
-        Text(name,
+        if (showName && name.isNotEmpty)
+          Text(
+            name,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: AppType.foot)),
+            style: TextStyle(
+              fontSize: IdentityType.name(IdentitySize.md),
+              fontWeight: FontWeight.w500,
+              color: text.bodyMedium?.color,
+            ),
+          ),
       ],
     );
   }

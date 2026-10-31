@@ -9,12 +9,59 @@ import '../data/entities.dart';
 import 'formatters.dart';
 import 'l10n.dart';
 
+/// 明细表的列计划：四个开关决定列数，以及「合计标签」与「数量」各自落在哪一格。
+///
+/// 抽成值对象是因为 pdf 的 TableRow 没有 colspan —— 合计行与「无明细」行都要按同一份
+/// 列数逐格补齐，算错一格就是「合计」两个字盖掉总数量。16 种开关组合在
+/// `test/print_sheet_test.dart` 里逐格对账。
+class SheetLayout {
+  const SheetLayout({
+    required this.showImage,
+    required this.showName,
+    required this.showSku,
+    required this.showPrice,
+    required this.imgMm,
+  });
+
+  final bool showImage;
+  final bool showName;
+  final bool showSku;
+  final bool showPrice;
+  final double imgMm;
+
+  List<pw.TableColumnWidth> get columns => <pw.TableColumnWidth>[
+        const pw.FixedColumnWidth(26),
+        if (showImage) pw.FixedColumnWidth(PdfPageFormat.mm * (imgMm + 4)),
+        if (showName) const pw.FlexColumnWidth(3),
+        // 名称列被关掉时，码这一格接管它腾出来的宽度（网页端 td.sku 的 width: auto）。
+        if (showSku)
+          showName ? const pw.FixedColumnWidth(92) : const pw.FlexColumnWidth(3),
+        const pw.FixedColumnWidth(58),
+        if (showPrice) const pw.FixedColumnWidth(72),
+        if (showPrice) const pw.FixedColumnWidth(80),
+      ];
+
+  int get count => columns.length;
+
+  int get nameAt => 1 + (showImage ? 1 : 0);
+
+  int get skuAt => nameAt + (showName ? 1 : 0);
+
+  /// 「无明细」与合计标签落在第一个商品标识列上：名称开着是名称列，关着是 SKU 列。
+  /// 两个都关（服务端拦着这一档，但旧行可能已经是这样）时退到序号列，绝不与数量格重合。
+  int get labelAt => showName ? nameAt : (showSku ? skuAt : 0);
+
+  /// 数量列在单价之前，不开单价时它就是最后一列。
+  int get qtyAt => count - 1 - (showPrice ? 1 : 0);
+}
+
 /// 入库单 / 出库单的 PDF 版式，逐块对齐网页端 `utils/printOrder.ts` 的打印 HTML：
 /// 抬头（logo · 公司 · 联系方式）、单据标题、单据信息行、明细表、合计行、备注、
 /// 经办人与客户签收行、页脚（租户自定义文字 + 出单时间）。
 ///
 /// 网页端把 HTML 写进新窗口交给浏览器打印；客户端没有那条路径，这里用同一份数据
-/// 直接出 PDF。模板尺寸与三个显示开关读 `/print-settings`，收款信息一律不上单据。
+/// 直接出 PDF。模板尺寸与四个显示开关读 `/print-settings`，收款信息一律不上单据。
+/// 「显示商品名称」关掉时名称整列消失，列数与合计行的补格跟着它走。
 class OrderSheet {
   OrderSheet._();
 
@@ -63,6 +110,9 @@ class OrderSheet {
         settings.showImage && items.any((OrderItem it) => (it.imageUrl ?? '').isNotEmpty);
     final bool showSku = settings.showSku;
     final bool showPrice = settings.showPrice;
+    // 租户级「显示商品名称」：关掉之后单据上只剩码（仓管/贴码场景）。
+    // 服务端保证「名称与 SKU 至少留一个」，所以这里不需要再兜一次底。
+    final bool showName = settings.showProductName;
     final Map<String, pw.MemoryImage> images =
         showImage ? await _loadImages(items) : const <String, pw.MemoryImage>{};
     final pw.MemoryImage? logo =
@@ -98,6 +148,7 @@ class OrderSheet {
             currency: currencySymbol,
             showImage: showImage,
             showSku: showSku,
+            showName: showName,
             showPrice: showPrice,
             imgMm: imgMm,
             images: images,
@@ -193,26 +244,23 @@ class OrderSheet {
     required String currency,
     required bool showImage,
     required bool showSku,
+    required bool showName,
     required bool showPrice,
     required double imgMm,
     required Map<String, pw.MemoryImage> images,
   }) {
     final double cell = pt - 1.5;
-    // 明细表的列 = 固定三列 + 三个开关各自裁剪的列；合计行与「无明细」行都要按同一个
-    // 列数补齐空格，因为 pdf 的 TableRow 没有 colspan。
-    final List<pw.TableColumnWidth> cols = <pw.TableColumnWidth>[
-      const pw.FixedColumnWidth(26),
-      if (showImage) pw.FixedColumnWidth(PdfPageFormat.mm * (imgMm + 4)),
-      const pw.FlexColumnWidth(3),
-      if (showSku) const pw.FixedColumnWidth(92),
-      const pw.FixedColumnWidth(58),
-      if (showPrice) const pw.FixedColumnWidth(72),
-      if (showPrice) const pw.FixedColumnWidth(80),
-    ];
-    final int columns = cols.length;
-    // 「商品」列固定在序号和图片之后；数量列在单价之前，不开单价时它就是最后一列。
-    final int nameAt = 1 + (showImage ? 1 : 0);
-    final int qtyAt = columns - 1 - (showPrice ? 1 : 0);
+    final SheetLayout layout = SheetLayout(
+      showImage: showImage,
+      showName: showName,
+      showSku: showSku,
+      showPrice: showPrice,
+      imgMm: imgMm,
+    );
+    final List<pw.TableColumnWidth> cols = layout.columns;
+    final int columns = layout.count;
+    final int labelAt = layout.labelAt;
+    final int qtyAt = layout.qtyAt;
 
     pw.Widget head(String text, pw.Alignment align) => _pad(
           pw.Align(
@@ -239,7 +287,7 @@ class OrderSheet {
           children: <pw.Widget>[
             head('#', pw.Alignment.center),
             if (showImage) head(l10n.sheetColImage, pw.Alignment.center),
-            head(l10n.sheetColProduct, pw.Alignment.centerLeft),
+            if (showName) head(l10n.sheetColProduct, pw.Alignment.centerLeft),
             if (showSku) head('SKU', pw.Alignment.centerLeft),
             head(l10n.sheetColQty, pw.Alignment.centerRight),
             if (showPrice) head(l10n.sheetColUnitPrice, pw.Alignment.centerRight),
@@ -250,7 +298,7 @@ class OrderSheet {
           pw.TableRow(
             children: <pw.Widget>[
               for (int i = 0; i < columns; i++)
-                i == nameAt
+                i == labelAt
                     ? body(pw.Center(
                         child: pw.Text(
                           l10n.sheetEmptyRows,
@@ -268,12 +316,8 @@ class OrderSheet {
                   child: pw.Text('${i + 1}', style: pw.TextStyle(fontSize: cell, color: _soft)),
                 )),
                 if (showImage) body(_image(items[i], imgMm, images)),
-                body(_name(items[i], cell)),
-                if (showSku)
-                  body(pw.Text(
-                    items[i].productSku,
-                    style: pw.TextStyle(fontSize: cell - 0.5, color: _soft),
-                  )),
+                if (showName) body(_name(items[i], cell)),
+                if (showSku) body(_sku(items[i], cell, withCategory: !showName)),
                 body(pw.Align(
                   alignment: pw.Alignment.centerRight,
                   child: pw.Column(
@@ -313,7 +357,7 @@ class OrderSheet {
           ),
           children: <pw.Widget>[
             for (int i = 0; i < columns; i++)
-              if (i == nameAt)
+              if (i == labelAt)
                 body(pw.Align(
                   alignment: pw.Alignment.centerRight,
                   child: pw.Text(
@@ -358,20 +402,47 @@ class OrderSheet {
         crossAxisAlignment: pw.WrapCrossAlignment.center,
         children: <pw.Widget>[
           pw.Text(item.productName, style: pw.TextStyle(fontSize: cell)),
-          if ((item.categoryName ?? '').isNotEmpty)
-            pw.Container(
-              padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-              decoration: pw.BoxDecoration(
-                color: _headBg,
-                border: pw.Border.all(color: _badgeLine, width: 0.6),
-                borderRadius: pw.BorderRadius.circular(3),
-              ),
-              child: pw.Text(
-                item.categoryName!,
-                style: pw.TextStyle(fontSize: cell - 1.5),
-              ),
-            ),
+          if ((item.categoryName ?? '').isNotEmpty) _categoryBadge(item.categoryName!, cell),
         ],
+      );
+
+  /// SKU 与名称**同字号同墨色**：这一格以前是 cell-0.5 + #555，比名称小半号还发灰，
+  /// 而单据上最难认的恰好是拣货要照着找货的那个码。字号与 `ProductIdentity` 手工对账
+  /// （PDF 用不了那个组件），改那边的档位必须同时改这里。
+  ///
+  /// 网页端这一格是 ui-monospace；客户端只随包带 Noto Sans / Noto Sans SC 两套字形，
+  /// 没有等宽字体，所以靠加粗与同墨色把码读重，不额外塞一份字体进 APK。
+  ///
+  /// 名称列被关掉时，类目徽章跟着搬到这一格（否则整张单据看不到类目）。
+  static pw.Widget _sku(OrderItem item, double cell, {bool withCategory = false}) => pw.Wrap(
+        spacing: 6,
+        runSpacing: 2,
+        crossAxisAlignment: pw.WrapCrossAlignment.center,
+        children: <pw.Widget>[
+          pw.Text(
+            item.productSku,
+            style: pw.TextStyle(
+              fontSize: cell,
+              fontWeight: pw.FontWeight.bold,
+              color: _ink,
+            ),
+          ),
+          if (withCategory && (item.categoryName ?? '').isNotEmpty)
+            _categoryBadge(item.categoryName!, cell),
+        ],
+      );
+
+  static pw.Widget _categoryBadge(String category, double cell) => pw.Container(
+        padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+        decoration: pw.BoxDecoration(
+          color: _headBg,
+          border: pw.Border.all(color: _badgeLine, width: 0.6),
+          borderRadius: pw.BorderRadius.circular(3),
+        ),
+        child: pw.Text(
+          category,
+          style: pw.TextStyle(fontSize: cell - 1.5),
+        ),
       );
 
   static pw.Widget _image(

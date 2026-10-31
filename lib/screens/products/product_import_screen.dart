@@ -10,6 +10,7 @@ import '../../data/entities.dart';
 import '../../data/product_sheet.dart';
 import '../../design/tokens.dart';
 import '../../design/widgets/controls.dart';
+import '../../design/widgets/product_identity.dart';
 
 import '../../design/widgets/sheets.dart';
 import '../../design/widgets/state_views.dart';
@@ -250,11 +251,15 @@ class _ProductImportScreenState extends State<ProductImportScreen> {
                     TileRow(
                       icon: Icons.inventory_2_rounded,
                       accent: AppInk.products,
-                      title: '${row.sku} · ${row.name}',
-                      subtitle: '${Fmt.count(row.quantity)} ${row.unit.isEmpty ? '个' : row.unit} · '
-                          '${app.formatMoney(row.price)}'
-                          '${row.category.isEmpty ? '' : ' · ${row.category}'}'
-                          '${row.location.isEmpty ? '' : ' · ${row.location}'}',
+                      identity: ProductIdentity(
+                        sku: row.sku,
+                        name: row.name,
+                        showName: app.productNameVisible,
+                        secondary: '${Fmt.count(row.quantity)} ${row.unit.isEmpty ? '个' : row.unit} · '
+                            '${app.formatMoney(row.price)}'
+                            '${row.category.isEmpty ? '' : ' · ${row.category}'}'
+                            '${row.location.isEmpty ? '' : ' · ${row.location}'}',
+                      ),
                     ),
                   if (_rows.length > 12)
                     Padding(

@@ -9,6 +9,7 @@ import '../../data/entities.dart';
 import '../../design/tokens.dart';
 import '../../design/widgets/controls.dart';
 import '../../design/widgets/paged_view.dart' show RowCard, Thumbnail;
+import '../../design/widgets/product_identity.dart';
 import '../../design/widgets/sheets.dart';
 import '../../design/widgets/state_views.dart';
 import '../../design/widgets/surfaces.dart';
@@ -564,15 +565,10 @@ class _LineCard extends StatelessWidget {
               Thumbnail(url: line.product.imageUrl, size: 40),
               const HGap(10),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text(line.product.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.titleMedium),
-                    Text(line.product.sku, style: Theme.of(context).textTheme.bodySmall),
-                  ],
+                child: ProductIdentity(
+                  sku: line.product.sku,
+                  name: line.product.name,
+                  showName: AppState.of(context).productNameVisible,
                 ),
               ),
               RoundIconButton(
@@ -893,9 +889,14 @@ class _ProductSearchSheetState extends State<_ProductSearchSheet> {
                           return RowCard(
                             accent: widget.inbound ? AppInk.finance : AppInk.products,
                             onTap: () => Navigator.of(context).pop(row),
-                            title: row.name,
-                            subtitle: '${row.sku} · ${widget.inbound ? l10n.prodCost : l10n.prodPrice} '
-                                '${Fmt.money(widget.inbound ? row.cost : row.price, symbol: app.profile.currencySymbol)}',
+                            identity: ProductIdentity(
+                              sku: row.sku,
+                              name: row.name,
+                              showName: app.productNameVisible,
+                              secondary:
+                                  '${widget.inbound ? l10n.prodCost : l10n.prodPrice} '
+                                  '${Fmt.money(widget.inbound ? row.cost : row.price, symbol: app.profile.currencySymbol)}',
+                            ),
                             // 同码分柜是这里的常态，柜名是唯一的区分维度，所以每一行都把柜名摆出来；
                             // 按箱卖的货还要看箱规，否则进/出库单只有总数、不知道该下几箱。
                             badges: <Widget>[

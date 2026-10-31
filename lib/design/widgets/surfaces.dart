@@ -109,17 +109,21 @@ class TileRow extends StatelessWidget {
   const TileRow({
     super.key,
     required this.icon,
-    required this.title,
+    this.title,
     this.subtitle,
     this.accent,
     this.trailing,
     this.onTap,
     this.danger = false,
-  });
+    this.identity,
+  }) : assert(title != null || identity != null, 'TileRow 要有 title 或 identity 之一');
 
   final IconData icon;
-  final String title;
+  final String? title;
   final String? subtitle;
+
+  /// 商品标识行（SKU 主行 + 名称副行），给了它就取代 title/subtitle。
+  final Widget? identity;
   final Color? accent;
   final Widget? trailing;
   final VoidCallback? onTap;
@@ -149,22 +153,23 @@ class TileRow extends StatelessWidget {
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text(
-                      title,
-                      style: danger
-                          ? text.titleMedium?.copyWith(color: AppInk.danger)
-                          : text.titleMedium,
+                child: identity ??
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(
+                          title ?? '',
+                          style: danger
+                              ? text.titleMedium?.copyWith(color: AppInk.danger)
+                              : text.titleMedium,
+                        ),
+                        if (subtitle != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 2),
+                            child: Text(subtitle!, style: text.bodySmall),
+                          ),
+                      ],
                     ),
-                    if (subtitle != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 2),
-                        child: Text(subtitle!, style: text.bodySmall),
-                      ),
-                  ],
-                ),
               ),
               const SizedBox(width: 8),
               if (trailing != null)

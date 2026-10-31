@@ -50,6 +50,11 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   late final Repos repos = Repos(api, () => profile.tenantId);
 
   UserProfile profile = UserProfile.none;
+
+  /// 租户级「显示商品名称」，真相在 `print_settings.show_product_name`。
+  /// 默认 true 且读失败保持默认：偏好还没读回来时猜「隐藏」会让商品名闪一下再消失，
+  /// 而隐藏名称只会是租户自己明确选过的一档。
+  bool productNameVisible = true;
   ThemeChoice themeChoice = ThemeChoice.system;
   Locale? localeOverride;
   bool booting = true;
@@ -92,6 +97,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     if (!signedIn) {
       profile = UserProfile.none;
       renewalPending = false;
+      productNameVisible = true;
       // 进程内 GET 记忆里留着的是这个账号见过的租户数据，掉线就得整表清掉。
       GetCache.instance.dropAll();
       unawaited(OfflineCache.instance.dropAll());
@@ -126,6 +132,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     profile = UserProfile.none;
     signedIn = false;
     renewalPending = false;
+    productNameVisible = true;
     notifyListeners();
   }
 
@@ -200,6 +207,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
       profile = UserProfile.fromData(data);
       await OfflineCache.instance.useTenant(profile.tenantId);
       renewalPending = profile.needsRenewal;
+      await _loadDisplayPrefs();
     } on ApiException catch (error) {
       if (error.isUnauthorized) {
         await signOut();
@@ -239,6 +247,22 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   bool canOpenModule(ModuleKey key) {
     if (renewalPending && key != ModuleKey.settings) return false;
     return Access.canOpen(profile, key);
+  }
+
+  /// 显示偏好跟着租户画像读一次；读不到就保持默认，不把它当成「租户关掉了名称」。
+  Future<void> _loadDisplayPrefs() async {
+    try {
+      final PrintSettings settings = await repos.settings.printSettings();
+      productNameVisible = settings.showProductName;
+    } on Object {
+      // 保持默认（显示名称）
+    }
+  }
+
+  /// 设置页保存成功后同步本地值，各作业面立刻跟着变，不必等重新加载。
+  void setProductNameVisible(bool visible) {
+    productNameVisible = visible;
+    notifyListeners();
   }
 
   // ---------------------------------------------------------------- 偏好
