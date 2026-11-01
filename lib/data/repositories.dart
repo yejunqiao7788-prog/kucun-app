@@ -943,20 +943,6 @@ class AiRepo {
   final ApiClient api;
   final TenantProvider tenant;
 
-  Future<AiConfig> config() async =>
-      AiConfig(JsonMap.from(await _get(api, '/ai/config', tenant: tenant)).json);
-
-  Future<String> chat(List<Map<String, Object?>> messages, {String? page}) async {
-    final Object? data = await api.post(
-      '/ai/chat',
-      body: <String, Object?>{'messages': messages, 'page': page},
-      tenantId: tenant(),
-      heavy: true,
-    );
-    final JsonMap map = JsonMap.from(data);
-    return map.asStringOr('reply', map.asStringOr('content', map.asStringOr('answer', '')));
-  }
-
   Future<String> transcribe(
     List<int> audioBytes, {
     String mimeType = 'audio/webm',

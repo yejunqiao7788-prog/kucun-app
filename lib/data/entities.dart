@@ -786,40 +786,6 @@ class ApiKeyCreated extends JsonMap {
   String get plaintext => asStringOr('plaintext', '');
 }
 
-class AiConfig extends JsonMap {
-  const AiConfig(super.json);
-
-  /// 两枚开关分开看：`enabled` 是租户侧总开关，`configured` 才说明超管挂了密钥。
-  bool get enabled => asBool('enabled');
-  bool get configured => asBool('configured');
-
-  /// 服务端把模型放在驼峰的 `modelChat`，没有 `model` / `model_name`。
-  String get model => asStringOr('modelChat', 'deepseek-chat');
-  String get baseUrl => asStringOr('baseUrl', '');
-  double get temperature => asDoubleOr('temperature', 0.7);
-  int get maxTokens => asIntOr('maxTokens', 2000);
-  int get contextWindow => asIntOr('contextWindow', 10);
-
-  /// `quick_prompts` 存的是 JSON 数组，元素可能是纯字符串或 `{text}` 对象。
-  List<String> get quickPrompts {
-    final Object? raw = json['quickPrompts'] ?? json['quick_prompts'];
-    if (raw is! List) return const <String>[];
-    final List<String> out = <String>[];
-    for (final Object? item in raw) {
-      final String text = item is String
-          ? item
-          : (normalize(item)['text'] ?? normalize(item)['label'] ?? '').toString();
-      if (text.isNotEmpty) out.add(text);
-    }
-    return out;
-  }
-
-  String? get error => asString('error');
-
-  /// 密钥不在租户手里，未配置时页面只解释「为什么不能聊」，不提供输入框。
-  bool get usable => enabled && configured;
-}
-
 enum LeadStatus {
   new_,
   contacted,

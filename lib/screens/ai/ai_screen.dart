@@ -9,7 +9,6 @@ import 'package:speech_to_text/speech_recognition_error.dart';
 import 'package:speech_to_text/speech_recognition_result.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 
-import '../../core/access.dart';
 import '../../core/api_exception.dart';
 import '../../core/formatters.dart';
 import '../../core/l10n.dart';
@@ -24,26 +23,24 @@ import '../../design/widgets/state_views.dart';
 import '../../design/widgets/surfaces.dart';
 import '../../shell/module_registry.dart';
 import '../../state/app_state.dart';
-import '../../state/value_loader.dart';
 import '../orders/order_detail_screen.dart';
 import 'local_query_engine.dart';
 
-/// AI 模块只做两件事，且两套真相不混用。
+/// AI 助手只有本地查询一条通道。
 ///
-/// 「问答」把最近若干轮对话交给服务端 `/ai/chat`；模型、密钥、温度都握在超管手里，
-/// App 没有任何输入密钥的入口，配置读不到就只解释原因、不给输入框。
-/// 「速查」走本地引擎（`local_query_engine.dart`，复刻原项目 ai_local.ts）：
-/// 正则认意图，数据从库存/订单/日志接口现取现算，返回的都是系统里的真实行，
-/// 不经过模型、也不需要模型密钥 —— 问答被锁时它照常工作。
+/// 引擎在 `local_query_engine.dart`（复刻原项目 `ai_local.ts`）：正则认意图，数据从
+/// 库存 / 订单 / 日志接口现取现算，返回的都是系统里的真实行 —— 不经过任何模型，
+/// 也不需要模型密钥。问答模式已移除：超管配的那套 `ai_*` 现在只服务订单拍照识别
+/// （vision-draft 走 `ai_vision_model`），本模块不再向上游发请求。
 ///
-/// 输入框上方常驻一排快捷发送：问答那边是服务端 `quick_prompts`（没配就用本地兜底的用法
-/// 问题，绝不放需要家底数据的问题，模型手里没有），速查这边是库存统计/库存预警/
-/// 今日出库/今日入库/操作记录/历史订单（最后一项先选日期），
-/// 发出去的都是引擎认得的中文原文。
+/// 快捷发送是中文原文（意图正则只认中文），界面展示的是本地化标签；「历史订单」
+/// 先落日期，再拼成 `历史订单:YYYY-MM-DD` 发给引擎。手打的内容同样走引擎，
+/// 认不出来才回「没查到」。
 ///
 /// 语音有两条通道：系统听写（`speech_to_text`，边说边出字）和服务端录音转写
 /// （录一段 m4a 交给 `/speech/transcribe`）。后者是原项目就给 Web Speech 不可用设备留的
 /// 回落，在国产 ROM 上往往是唯一能用的一条；系统听写起不来时自动走它。
+/// 转写出来的字直接进引擎，不再退回输入框等用户按发送。
 class AiScreen extends StatefulWidget {
   const AiScreen({super.key});
 
@@ -53,15 +50,10 @@ class AiScreen extends StatefulWidget {
 
 class _AiScreenState extends State<AiScreen> {
   late final Repos _repos = context.read<AppState>().repos;
-  late final ValueLoader<AiConfig> _config =
-      ValueLoader<AiConfig>(() => _repos.ai.config());
 
   final ScrollController _scroll = ScrollController();
   final TextEditingController _input = TextEditingController();
   final FocusNode _focus = FocusNode();
-
-  final List<_Turn> _turns = <_Turn>[];
-  bool _sending = false;
 
   late final LocalQueryEngine _engine = LocalQueryEngine(_repos);
   LocalQuery? _lastQuery;
@@ -82,25 +74,8 @@ class _AiScreenState extends State<AiScreen> {
   /// 上游 25 秒硬超时，60 秒的音频已经贴着天花板；再长就让它到点自己停。
   static const int _recordCapSeconds = 60;
 
-  int _tab = 0;
-
-  /// build 直接读 `_config.value/errorText`，没有 AnimatedBuilder 接手，得自己挂监听，
-  /// 否则配置回来后页面停在骨架屏。
-  void _repaint() {
-    if (mounted) setState(() {});
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _config.addListener(_repaint);
-    _config.load();
-  }
-
   @override
   void dispose() {
-    _config.removeListener(_repaint);
-    _config.dispose();
     _scroll.dispose();
     _input.dispose();
     _focus.dispose();
@@ -123,40 +98,6 @@ class _AiScreenState extends State<AiScreen> {
     });
   }
 
-  Future<void> _ask(String question) async {
-    final String text = question.trim();
-    if (text.isEmpty || _sending) return;
-    final L10n l10n = AppState.of(context).l10n;
-    _input.clear();
-    setState(() {
-      _turns.add(_Turn.ask(text));
-      _sending = true;
-    });
-    _scrollToEnd();
-
-    final int window = _config.value?.contextWindow ?? 10;
-    final int from = (_turns.length - 1 - window).clamp(0, _turns.length);
-    final List<Map<String, Object?>> payload = _turns
-        .skip(from)
-        .map((_Turn turn) => <String, Object?>{'role': turn.role, 'content': turn.text})
-        .toList(growable: false);
-
-    String? failure;
-    String reply = '';
-    final AppState state = AppState.of(context);
-    try {
-      reply = await _repos.ai.chat(payload);
-    } on Object catch (error) {
-      failure = state.describeError(error);
-    }
-    if (!mounted) return;
-    setState(() {
-      _turns.add(failure != null ? _Turn.failed(failure) : _Turn.answer(reply.isEmpty ? l10n.aiAnswerEmpty : reply));
-      _sending = false;
-    });
-    _scrollToEnd();
-  }
-
   Future<void> _runLocal(LocalQuery query) async {
     if (query.text.trim().isEmpty || _looking) return;
     _input.clear();
@@ -165,6 +106,7 @@ class _AiScreenState extends State<AiScreen> {
       _lookupError = null;
       _lastQuery = query;
     });
+    _scrollToEnd();
     LocalResult? result;
     String? failure;
     final AppState state = AppState.of(context);
@@ -179,6 +121,18 @@ class _AiScreenState extends State<AiScreen> {
       _lookupError = failure;
       _looking = false;
     });
+    _scrollToEnd();
+  }
+
+  /// 换一次查询前先清空上一份结果：结果区在快捷查询下面，不清空会新旧叠着读。
+  void _clearResult() {
+    setState(() {
+      _lookup = null;
+      _lookupError = null;
+      _lastQuery = null;
+    });
+    _input.clear();
+    _focus.unfocus();
   }
 
   /// 「历史订单」按钮先落日期再发，发出去的仍是引擎认得的 `历史订单:YYYY-MM-DD`。
@@ -194,71 +148,36 @@ class _AiScreenState extends State<AiScreen> {
     await _runLocal(LocalQuery('历史订单:${Fmt.isoDate(picked)}', only: OrderType.outbound));
   }
 
-  /// 意图解析的正则只认中文，所以快捷发送发的是写死的中文原文，界面只展示本地化标签。
-  /// 问答那边交给模型的是用法问题，不是家底问题 —— `/ai/chat` 手里没有租户数据。
-  List<_Shortcut> _shortcuts(L10n l10n) {
-    if (_tab == 0) {
-      final List<String> server = _config.value?.quickPrompts ?? const <String>[];
-      if (server.isNotEmpty) {
-        return server
-            .map((String prompt) => _Shortcut(prompt, LocalQuery(prompt)))
-            .toList(growable: false);
-      }
-      return <_Shortcut>[
-        _Shortcut(l10n.aiQCanDo, LocalQuery(l10n.aiQCanDo)),
-        _Shortcut(l10n.aiQOrderStates, LocalQuery(l10n.aiQOrderStates)),
-        _Shortcut(l10n.aiQHowExport, LocalQuery(l10n.aiQHowExport)),
+  /// 意图解析的正则只认中文，所以快捷发送发的是写死的中文原文，按钮上只展示本地化标签。
+  List<_Shortcut> _shortcuts(L10n l10n) => <_Shortcut>[
+        _Shortcut(l10n.aiValueTitle, const LocalQuery('库存统计')),
+        _Shortcut(l10n.aiLowStockTitle, const LocalQuery('库存预警')),
+        _Shortcut(l10n.dashOutToday, const LocalQuery('今日出库', only: OrderType.outbound)),
+        _Shortcut(l10n.dashInToday, const LocalQuery('今日入库', only: OrderType.inbound)),
+        _Shortcut(l10n.aiLogsTitle, const LocalQuery('操作记录')),
+        _Shortcut(l10n.aiHistoryShort, const LocalQuery('历史订单'), history: true),
       ];
-    }
-    return <_Shortcut>[
-      _Shortcut(l10n.aiValueTitle, const LocalQuery('库存统计')),
-      _Shortcut(l10n.aiLowStockTitle, const LocalQuery('库存预警')),
-      _Shortcut(l10n.dashOutToday, const LocalQuery('今日出库', only: OrderType.outbound)),
-      _Shortcut(l10n.dashInToday, const LocalQuery('今日入库', only: OrderType.inbound)),
-      _Shortcut(l10n.aiLogsTitle, const LocalQuery('操作记录')),
-      _Shortcut(l10n.aiHistoryShort, const LocalQuery('历史订单'), history: true),
-    ];
-  }
 
   void _applyShortcut(_Shortcut shortcut) {
-    if (_tab == 0) {
-      _ask(shortcut.query.text);
-    } else if (shortcut.history) {
+    if (shortcut.history) {
       _pickHistoryDate();
     } else {
       _runLocal(shortcut.query);
     }
   }
 
-  /// 底部那条空白原本是「快捷问句只来自服务端」留下的：超管没配 quick_prompts，
-  /// 列表里就一颗按钮都没有。快捷发送因此改挂在输入框上方，本地兜底一组按钮。
-  /// 速查走本地引擎，不依赖配置 —— 只有问答在模块被关或缺密钥时才锁。
-  Widget? _stripIfUsable(AiConfig? config) {
-    if (config != null && !config.enabled) return null;
-    if (_tab == 0 && config != null && !config.usable) return null;
-    return _shortcutStrip();
-  }
-
-  Widget _shortcutStrip() {
-    final L10n l10n = AppState.of(context).l10n;
-    final List<_Shortcut> items = _shortcuts(l10n);
-    final bool busy = _tab == 0 ? _sending : _looking;
-    return SizedBox(
-      height: 38,
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        children: <Widget>[
-          // 录音转写排在最前面：它不依赖系统语音识别，是唯一保证能用的口述入口。
-          _PromptChip(label: l10n.aiRecord, onTap: busy || _transcribing ? null : _startRecording),
-          for (final _Shortcut item in items) ...<Widget>[
-            const HGap(8),
-            _PromptChip(
-              label: item.label,
-              onTap: busy ? null : () => _applyShortcut(item),
-            ),
-          ],
-        ],
-      ),
+  /// 快捷查询常驻在结果上方，自己折行 —— 之前挂在输入框上方那排横向条只有标签、
+  /// 要点左右滑才看得全，而这一页最该让人一眼看见的就是「能问哪几件事」。
+  Widget _quickPanel(L10n l10n) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: <Widget>[
+        // 录音转写排第一：它不依赖系统语音识别，是唯一保证能用的口述入口。
+        _PromptChip(label: l10n.aiRecord, onTap: _looking || _transcribing ? null : _startRecording),
+        for (final _Shortcut item in _shortcuts(l10n))
+          _PromptChip(label: item.label, onTap: _looking ? null : () => _applyShortcut(item)),
+      ],
     );
   }
 
@@ -321,11 +240,7 @@ class _AiScreenState extends State<AiScreen> {
         if (!result.finalResult) return;
         if (!mounted) return;
         setState(() => _listening = false);
-        if (_tab == 1) {
-          _runLocal(LocalQuery(words));
-        } else {
-          _ask(words);
-        }
+        _runLocal(LocalQuery(words));
       },
       listenOptions: SpeechListenOptions(
         listenFor: const Duration(seconds: 20),
@@ -433,11 +348,7 @@ class _AiScreenState extends State<AiScreen> {
     }
     _input.text = words;
     _input.selection = TextSelection.collapsed(offset: words.length);
-    if (_tab == 1) {
-      _runLocal(LocalQuery(words));
-    } else {
-      _ask(words);
-    }
+    _runLocal(LocalQuery(words));
   }
 
   Future<void> _cancelRecording() async {
@@ -456,7 +367,6 @@ class _AiScreenState extends State<AiScreen> {
   Widget build(BuildContext context) {
     final AppState app = context.watch<AppState>();
     final L10n l10n = app.l10n;
-    final AiConfig? config = _config.value;
 
     return Scaffold(
       body: Column(
@@ -484,60 +394,44 @@ class _AiScreenState extends State<AiScreen> {
                           ),
                         ),
                       ),
-                      RoundIconButton(
-                        icon: Icons.refresh_rounded,
-                        color: AppInk.ai,
-                        tooltip: l10n.actRefresh,
-                        onPressed: _config.refresh,
-                      ),
+                      // 只剩本地一条通道，就不需要「问答 / 速查」的分栏了；
+                      // 用一枚胶囊说明这一页查的是系统里的真实记录。
+                      StatusPill(label: l10n.aiModeLocal, color: AppInk.ai, dense: true),
+                      if (_lastQuery != null) ...<Widget>[
+                        const HGap(6),
+                        RoundIconButton(
+                          icon: Icons.refresh_rounded,
+                          color: AppInk.ai,
+                          size: 34,
+                          tooltip: l10n.actRefresh,
+                          onPressed: _looking ? null : () => _runLocal(_lastQuery!),
+                        ),
+                        RoundIconButton(
+                          icon: Icons.delete_sweep_rounded,
+                          color: AppInk.textTertiary,
+                          size: 34,
+                          tooltip: l10n.actClear,
+                          onPressed: _clearResult,
+                        ),
+                      ],
                     ],
-                  ),
-                  const VGap(12),
-                  PillTabs<int>(
-                    values: const <int>[0, 1],
-                    selected: _tab,
-                    accent: AppInk.ai,
-                    labelOf: (int value) => value == 0 ? l10n.aiTabChat : l10n.aiTabLookup,
-                    onChanged: (int value) => setState(() => _tab = value),
                   ),
                 ],
               ),
             ),
           ),
-          if (config != null && !config.enabled)
-            // 超管把模块整个关了：没有数据可查，也没有模型可问，只剩解释和反馈。
-            Expanded(child: _NotConfigured(config: config, l10n: l10n))
-          else if (_tab == 1)
-            // 速查走本地引擎：配置在途或拉不到都不挡路，它只要业务接口活着。
-            Expanded(child: _buildLookup(l10n))
-          else if (_config.loading && config == null)
-            const Expanded(child: SkeletonList(count: 3, itemHeight: 70))
-          else if (config == null)
-            Expanded(
-              child: AppErrorView(message: _config.errorText ?? l10n.commonErrorTitle, onRetry: _config.load),
-            )
-          else if (!config.usable)
-            // 缺的是模型密钥，不是速查：问答锁掉，速查照常走真实记录。
-            Expanded(
-              child: _NotConfigured(
-                config: config,
-                l10n: l10n,
-                onLookup: () => setState(() => _tab = 1),
-              ),
-            )
-          else
-            Expanded(child: _buildChat(l10n)),
+          Expanded(child: _buildLookup(l10n)),
           _Composer(
             controller: _input,
             focusNode: _focus,
-            busy: _sending || _looking || _transcribing,
+            busy: _looking || _transcribing,
             listening: _listening || _recording,
             hint: l10n.aiPlaceholder,
             listeningHint: _recording ? l10n.aiRecording(_recordSeconds) : l10n.aiListening,
             sendLabel: l10n.aiSend,
             voiceTooltip: _recording ? l10n.actDone : l10n.aiVoice,
-            shortcuts: _recording ? _recordingStrip(l10n) : _stripIfUsable(config),
-            onSend: () => _tab == 0 ? _ask(_input.text) : _runLocal(LocalQuery(_input.text)),
+            shortcuts: _recording ? _recordingStrip(l10n) : null,
+            onSend: () => _runLocal(LocalQuery(_input.text)),
             onMic: _toggleMic,
           ),
         ],
@@ -545,42 +439,21 @@ class _AiScreenState extends State<AiScreen> {
     );
   }
 
-  Widget _buildChat(L10n l10n) {
+  Widget _buildLookup(L10n l10n) {
     return ListView(
       controller: _scroll,
       padding: const EdgeInsets.fromLTRB(Space.gutter, 4, Space.gutter, 16),
       children: <Widget>[
-        if (_turns.isEmpty)
-          AppEmpty(
-            title: l10n.aiEmptyTitle,
-            hint: l10n.aiEmptyHint,
-            icon: Icons.auto_awesome_rounded,
-            accent: AppInk.ai,
-          ),
-        for (final _Turn turn in _turns) _Bubble(turn: turn),
-        if (_sending) const _ThinkingRow(),
-        const VGap(14),
-        Text(
-          l10n.aiDisclaimer,
-          style: const TextStyle(fontSize: AppType.micro, color: AppInk.textTertiary),
+        SectionHeader(
+          title: l10n.aiQuickTitle,
+          subtitle: l10n.aiLocalHint,
+          accent: AppInk.ai,
         ),
-      ],
-    );
-  }
-
-  Widget _buildLookup(L10n l10n) {
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(Space.gutter, 4, Space.gutter, 16),
-      children: <Widget>[
-        Text(
-          l10n.aiLookupHint,
-          style: const TextStyle(fontSize: AppType.foot, color: AppInk.textSecondary),
-        ),
-        const VGap(12),
+        _quickPanel(l10n),
+        const VGap(18),
         if (_lookupError != null)
           NoticeBanner(text: _lookupError!, color: AppInk.danger, icon: Icons.error_outline_rounded),
-        if (_looking)
-          const Padding(padding: EdgeInsets.symmetric(vertical: 24), child: AppSpinner(color: AppInk.ai)),
+        if (_looking) const _ThinkingRow(),
         if (!_looking && _lookup == null && _lookupError == null)
           AppEmpty(
             title: l10n.aiEmptyTitle,
@@ -589,6 +462,15 @@ class _AiScreenState extends State<AiScreen> {
             accent: AppInk.ai,
           ),
         if (!_looking && _lookup != null) ..._renderResult(_lookup!, l10n),
+        const VGap(14),
+        Text(
+          l10n.aiLookupHint,
+          style: const TextStyle(fontSize: AppType.micro, color: AppInk.textTertiary),
+        ),
+        Text(
+          l10n.aiVisionOnly,
+          style: const TextStyle(fontSize: AppType.micro, color: AppInk.textTertiary),
+        ),
       ],
     );
   }
@@ -700,16 +582,13 @@ class _AiScreenState extends State<AiScreen> {
           ),
         ];
       case LocalKind.hint:
+        // 手打的话引擎没认出来。快捷查询就在上方一块屏幕上，不再在这里重复一遍按钮。
         return <Widget>[
-          const VGap(6),
-          _Bubble(turn: _Turn.answer(l10n.aiLocalHint)),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: <Widget>[
-              for (final _Shortcut item in _shortcuts(l10n).skip(1))
-                _PromptChip(label: item.label, onTap: () => _applyShortcut(item)),
-            ],
+          AppEmpty(
+            title: l10n.aiNotFound,
+            hint: l10n.aiLookupExample,
+            icon: Icons.search_off_rounded,
+            accent: AppInk.textTertiary,
           ),
         ];
     }
@@ -803,67 +682,6 @@ class _Shortcut {
 
   /// 「历史订单」先落日期，再拼成 `历史订单:YYYY-MM-DD` 发给引擎。
   final bool history;
-}
-
-class _Turn {
-  _Turn._(this.role, this.text, this.failed);
-
-  factory _Turn.ask(String text) => _Turn._('user', text, false);
-  factory _Turn.answer(String text) => _Turn._('assistant', text, false);
-  factory _Turn.failed(String text) => _Turn._('assistant', text, true);
-
-  final String role;
-  final String text;
-  final bool failed;
-
-  bool get fromUser => role == 'user';
-}
-
-class _Bubble extends StatelessWidget {
-  const _Bubble({required this.turn});
-
-  final _Turn turn;
-
-  @override
-  Widget build(BuildContext context) {
-    if (turn.fromUser) {
-      return Align(
-        alignment: Alignment.centerRight,
-        child: Container(
-          margin: const EdgeInsets.only(top: 10),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-          constraints: const BoxConstraints(maxWidth: 320),
-          decoration: const BoxDecoration(color: AppInk.ai, borderRadius: Radii.card_),
-          child: Text(
-            turn.text,
-            style: const TextStyle(color: Colors.white, fontSize: AppType.body, height: 1.35),
-          ),
-        ),
-      );
-    }
-    final Color accent = turn.failed ? AppInk.danger : AppInk.ai;
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.only(top: 10),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        constraints: const BoxConstraints(maxWidth: 360),
-        decoration: BoxDecoration(
-          color: AppInk.surface,
-          borderRadius: Radii.card_,
-          border: Border.all(color: AppInk.tint(accent, alpha: 0.28)),
-        ),
-        child: Text(
-          turn.text,
-          style: TextStyle(
-            fontSize: AppType.body,
-            height: 1.4,
-            color: turn.failed ? AppInk.danger : AppInk.textPrimary,
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 class _ThinkingRow extends StatelessWidget {
@@ -1009,54 +827,3 @@ class _Composer extends StatelessWidget {
   }
 }
 
-class _NotConfigured extends StatelessWidget {
-  const _NotConfigured({required this.config, required this.l10n, this.onLookup});
-
-  final AiConfig config;
-  final L10n l10n;
-
-  /// 只有「模块开着、缺模型密钥」时能给：速查不依赖密钥，可以直接切过去。
-  final VoidCallback? onLookup;
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(Space.gutter, 8, Space.gutter, 24),
-      children: <Widget>[
-        AppEmpty(
-          title: l10n.aiNotConfigured,
-          hint: config.enabled ? l10n.aiKeyMissing : l10n.aiModuleOff,
-          icon: config.enabled ? Icons.key_off_rounded : Icons.help_outline_rounded,
-          accent: AppInk.ai,
-        ),
-        const VGap(12),
-        if (config.model.isNotEmpty)
-          AppCard(
-            accent: AppInk.ai,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Column(
-              children: <Widget>[
-                KeyValueRow(label: l10n.aiModel, value: config.model),
-                KeyValueRow(label: l10n.aiContextTurns, value: '${config.contextWindow}'),
-              ],
-            ),
-          ),
-        const VGap(16),
-        if (onLookup != null)
-          PrimaryButton(
-            label: l10n.aiGoLookup,
-            icon: Icons.search_rounded,
-            color: AppInk.ai,
-            onPressed: onLookup,
-          ),
-        const VGap(10),
-        GhostButton(
-          label: l10n.setFeedback,
-          icon: Icons.forum_rounded,
-          color: AppInk.ai,
-          onPressed: () => ModuleKey.settings.jumpTo(context),
-        ),
-      ],
-    );
-  }
-}
