@@ -352,12 +352,8 @@ class _PickingList extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
                           Text(order.orderNumber, style: Theme.of(context).textTheme.titleMedium),
-                          // 备货清单是拣货作业队列：码要在这一行就读得到，不必点进订单详情。
-                          // 服务端交回未截断的去重清单，截断只由 Fmt.skuSummary 裁决一次。
-                          if (Fmt.skuSummary(order.skus).isNotEmpty) ...<Widget>[
-                            const VGap(2),
-                            SkuText(sku: Fmt.skuSummary(order.skus), size: IdentitySize.sm),
-                          ],
+                          // 备货清单只显示「单」级信息（业主 2026-11-01，与网页端同步撤除）：
+                          // 码属于明细，点进订单详情读。
                           const VGap(2),
                           Text(
                             order.customerName,

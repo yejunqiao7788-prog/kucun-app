@@ -179,10 +179,6 @@ class Order extends JsonMap {
   List<OrderItem> get items =>
       asRawList('items').map(OrderItem.new).toList(growable: false);
   int get itemCount => items.length;
-
-  /// `dashboard/orders` 的备货队列专用：去重后的整份 SKU 清单（服务端不截断，
-  /// 展示口径只由 Fmt.skuSummary 裁决一次）。订单详情那一面走 [items]。
-  List<String> get skus => asStringList('skus');
 }
 
 class OrderItem extends JsonMap {
