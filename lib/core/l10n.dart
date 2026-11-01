@@ -174,6 +174,7 @@ class L10n {
   String get dashOutQty => raw('dash_out_qty');
   String get dashRecentOrders => raw('dash_recent_orders');
   String get dashPicking => raw('dash_picking');
+  String get dashNoPicking => raw('dash_no_picking');
   String get dashActivity => raw('dash_activity');
   String get dashBatchPrice => raw('dash_batch_price');
   String dashSyncedFrom(Object source) =>

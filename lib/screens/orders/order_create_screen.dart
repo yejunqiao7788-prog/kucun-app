@@ -261,7 +261,9 @@ class _OrderCreateScreenState extends State<OrderCreateScreen> {
                 .where((_DraftLine l) => l.quantity > 0)
                 .map((_DraftLine l) => l.toPayload())
                 .toList(growable: false),
-            showInPickingList: _showInPicking,
+            // 定稿分支出生即 completed（is_preparing=false），备货清单是未完成的工作队列，
+            // 这一单绝不能进；与网页端 OrderCreator 的 `preparing && showInPicking` 同口径。
+            showInPickingList: _showInPicking && !finalize,
           ));
       if (!mounted) return;
       showToast(context, finalize ? l10n.ordFinalisedOk : l10n.ordSavedDraft);

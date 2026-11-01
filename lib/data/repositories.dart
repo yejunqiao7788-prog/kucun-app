@@ -102,6 +102,9 @@ class DashboardRepo {
 }
 
 /// `dashboard/orders` 的 `{ recent, picking }`。
+///
+/// 首页只渲染 `picking`（未完成的工作队列）；`recent`（今日订单）在网页端是单独一签，
+/// 客户端用订单模块看，这里不读 —— 服务端那份「非管理员只看备货中」的收窄也就只有一处。
 class DashboardOrders {
   const DashboardOrders(this.json);
 
@@ -109,13 +112,6 @@ class DashboardOrders {
 
   List<Order> get picking =>
       JsonMap.rawListOf(json.raw('picking'), <String>[]).map(Order.new).toList();
-
-  /// 契约要求客户端复现这条收窄规则：非管理员的今日订单只保留备货中的单。
-  List<Order> recent({required bool privileged}) {
-    final List<Order> rows =
-        JsonMap.rawListOf(json.raw('recent'), <String>[]).map(Order.new).toList();
-    return privileged ? rows : rows.where((Order o) => o.isPreparing).toList();
-  }
 }
 
 class ProductRepo {

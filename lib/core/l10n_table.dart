@@ -105,6 +105,7 @@ const Map<String, List<String>> kStrings = <String, List<String>>{
   'dash_out_qty': <String>['今日出库件数', 'Units out today', 'Одиниць видано', 'SL xuất hôm nay'],
   'dash_recent_orders': <String>['最近订单', 'Recent orders', 'Останні замовлення', 'Đơn gần đây'],
   'dash_picking': <String>['备货中', 'Preparing', 'Готується', 'Đang soạn hàng'],
+  'dash_no_picking': <String>['没有需要备货的订单', 'Nothing to pick right now', 'Немає замовлень для комплектування', 'Không có đơn cần soạn hàng'],
   'dash_activity': <String>['动态', 'Activity', 'Події', 'Hoạt động'],
   'dash_no_logs': <String>['暂无操作记录', 'No activity yet', 'Немає записів', 'Chưa có hoạt động'],
   // 批量改价 / 外部同步 / 保留期清理这三支服务端既不写 details.name 也不写 changes，
@@ -211,7 +212,7 @@ const Map<String, List<String>> kStrings = <String, List<String>>{
   'ord_inbound': <String>['入库单', 'Inbound', 'Надходження', 'Đơn nhập'],
   'ord_outbound': <String>['出库单', 'Outbound', 'Видаток', 'Đơn xuất'],
   'ord_status': <String>['状态', 'Status', 'Статус', 'Trạng thái'],
-  'ord_pending': <String>['草稿', 'Draft', 'Чернетка', 'Nháp'],
+  'ord_pending': <String>['备货中', 'Preparing', 'Готується', 'Đang soạn hàng'],
   'ord_completed': <String>['已定稿', 'Finalized', 'Затверджено', 'Đã chốt'],
   'ord_customer': <String>['客户', 'Customer', 'Клієнт', 'Khách hàng'],
   'ord_date': <String>['单据日期', 'Order date', 'Дата замовлення', 'Ngày đơn'],

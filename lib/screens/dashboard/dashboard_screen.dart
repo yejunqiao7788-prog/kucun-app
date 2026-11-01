@@ -117,7 +117,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                 ),
                 _PickingList(
-                  orders: _orders.value!.recent(privileged: app.isAdmin),
                   picking: _orders.value!.picking,
                   l10n: l10n,
                 ),
@@ -321,19 +320,20 @@ class _PageHead extends StatelessWidget {  const _PageHead({required this.title,
 }
 
 class _PickingList extends StatelessWidget {
-  const _PickingList({required this.orders, required this.picking, required this.l10n});
+  const _PickingList({required this.picking, required this.l10n});
 
-  final List<Order> orders;
   final List<Order> picking;
   final L10n l10n;
 
   @override
   Widget build(BuildContext context) {
-    final List<Order> rows = (picking.isNotEmpty ? picking : orders).take(4).toList();
+    // 只渲染服务端交回的备货队列（未完成且带开关的单）。此前队列为空时回落到「今日订单」，
+    // 于是已完成与备货中的单都会以「备货清单」的名义出现 —— 网页端从不这么兜底。
+    final List<Order> rows = picking.take(4).toList();
     if (rows.isEmpty) {
       return AppCard(
         accent: AppInk.orders,
-        child: Text(l10n.commonEmptyTitle, style: Theme.of(context).textTheme.bodyMedium),
+        child: Text(l10n.dashNoPicking, style: Theme.of(context).textTheme.bodyMedium),
       );
     }
     return Column(

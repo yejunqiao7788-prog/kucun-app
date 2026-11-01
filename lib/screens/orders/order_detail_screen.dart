@@ -421,7 +421,9 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
             ),
           _SummaryCard(order: order, l10n: l10n, app: app, accent: accent),
           const VGap(14),
-          if (order.showInPickingList) ...<Widget>[
+          // 备货清单只属于未完成的单：已完成却还带着这个开关（历史上「定稿 + 勾了进清单」
+          // 造出来的漂移行）不再渲染进度卡，免得看起来还在拣货。
+          if (order.showInPickingList && draft) ...<Widget>[
             _PickingCard(
               order: order,
               marks: _marks,
