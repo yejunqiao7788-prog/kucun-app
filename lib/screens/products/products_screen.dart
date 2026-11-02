@@ -507,7 +507,7 @@ class _ProductFilters {
     this.search,
     this.categoryId,
     this.lowStockOnly = false,
-    this.hideZeroStock = false,
+    this.hideZeroStock = true,
     this.orderBy = 'updated_at',
     this.ascending = false,
   });
@@ -519,7 +519,8 @@ class _ProductFilters {
   final String orderBy;
   final bool ascending;
 
-  bool get dirty => lowStockOnly || hideZeroStock || categoryId != null;
+  // 与网页端 ProductsPanel 同口径：默认就是隐藏零库存，把它切回显示才算动了筛选。
+  bool get dirty => lowStockOnly || !hideZeroStock || categoryId != null;
 
   _ProductFilters copyWith({
     String? search,

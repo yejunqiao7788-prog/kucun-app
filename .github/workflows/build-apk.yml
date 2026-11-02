@@ -44,9 +44,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: github.ref == 'refs/heads/main'
         with:
-          tag_name: v2.1.12
-          name: "TorgSeek库存 v2.1.12"
-          body: "备货清单不再挂 SKU 摘要：列表只列「单」级信息（单号、客户、状态），码属于明细，点进订单详情读 —— 与网页端同批撤除的口径（业主 2026-11-01 两张列表都定了这条）。订单列表本来就没挂，不动；App 侧的摘要帮助函数与实体字段一并删除，不留零消费者的死代码。库存面板、订单详情、建单、商品卡片、打印单据照旧显示 SKU。"
+          tag_name: v2.1.13
+          name: "TorgSeek库存 v2.1.13"
+          body: "商品管理筛选默认「隐藏零库存」：进页面就是只看有货的商品，想连卖空的一起看，进筛选把那个开关关掉 —— 与网页端商品面板同一默认口径。筛选图标的亮起也跟着翻转：现在是你把零库存切回显示（偏离默认）才算动了筛选。低库存只看、分类等其余筛选与订单拍照识别都不受影响。"
           files: build/app/outputs/flutter-apk/app-release.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
