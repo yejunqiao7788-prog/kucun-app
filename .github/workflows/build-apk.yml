@@ -44,9 +44,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: github.ref == 'refs/heads/main'
         with:
-          tag_name: v2.1.13
-          name: "TorgSeek库存 v2.1.13"
-          body: "商品管理筛选默认「隐藏零库存」：进页面就是只看有货的商品，想连卖空的一起看，进筛选把那个开关关掉 —— 与网页端商品面板同一默认口径。筛选图标的亮起也跟着翻转：现在是你把零库存切回显示（偏离默认）才算动了筛选。低库存只看、分类等其余筛选与订单拍照识别都不受影响。"
+          tag_name: v2.1.14
+          name: "TorgSeek库存 v2.1.14"
+          body: "备货勾选提速：订单详情备货清单里点 +/- 标记，数字与勾号立即变化，保存在后台完成 —— 不再等一整趟网络往返，连点次次生效，两行分点互不阻塞（旧版一个保存在路上其它点击全被吞）。同一行的写按顺序排队防乱序；失败以服务端为准只回滚那一行。离线点按提示写入被挡、数字不动。服务端与网页端零改动，与主项目 OrderDetail.tsx 同一套乐观更新形状。"
           files: build/app/outputs/flutter-apk/app-release.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

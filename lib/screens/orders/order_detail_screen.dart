@@ -44,6 +44,10 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   Order? _order;
   List<PaymentRecord> _payments = const <PaymentRecord>[];
   Map<int, PickingMark> _marks = <int, PickingMark>{};
+  // 备货勾选乐观更新：同一行的连点按行串行发送（防乱序到达），
+  // seq 用来识别「最新一次意图」——只有它的失败需要回滚。
+  final Map<int, Future<void>> _markQueue = <int, Future<void>>{};
+  final Map<int, int> _markSeq = <int, int>{};
   bool _loading = true;
   bool _busy = false;
   bool _printing = false;
@@ -112,22 +116,75 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
 
   /// `item_index` 就是明细数组下标：服务端主键是 `(order_id, item_index)`，
   /// 网页端备货页读的是同一支 `shapeOrders` 顺序，两端保持一致。
-  Future<void> _setPicked(int index, int quantity, int max) => _run(() async {
-        final AppState app = AppState.of(context);
-        final Order order = _order!;
-        await app.guardWrite<void>(() async {
-          if (quantity <= 0) {
-            await _repos.orders.clearPickingMark(order.id, index);
-          } else {
-            await _repos.orders.savePickingMark(
-              orderId: order.id,
-              itemIndex: index,
-              pickedCount: quantity,
-              maxQuantity: max,
-            );
-          }
+  ///
+  /// 乐观更新：点击立即改 `_marks`，保存在后台跑。不走 `_run`：
+  /// 不占全局 `_busy`（允许连点），写完也不 `_load()` 整页重拉 ——
+  /// 备货标记不影响订单金额/明细，没有重读整单的理由。
+  Future<void> _setPicked(int index, int quantity, int max) async {
+    final AppState app = AppState.of(context);
+    final Order order = _order!;
+    // 离线/未登录先挡：与 guardWrite 同语义，但不改 UI（旧行为是抛错提示）
+    if (!app.canWrite) {
+      showToast(context, app.l10n.setWriteBlockedOffline, danger: true);
+      return;
+    }
+    setState(() {
+      if (quantity <= 0) {
+        _marks.remove(index);
+      } else {
+        _marks[index] = PickingMark(<String, Object?>{
+          'order_id': order.id,
+          'item_index': index,
+          'picked_count': quantity,
+          'max_quantity': max,
         });
-      });
+      }
+    });
+    final int seq = (_markSeq[index] ?? 0) + 1;
+    _markSeq[index] = seq;
+    final Future<void> prev = _markQueue[index] ?? Future<void>.value();
+    final Future<void> task = prev.then((_) async {
+      try {
+        if (quantity <= 0) {
+          await _repos.orders.clearPickingMark(order.id, index);
+        } else {
+          await _repos.orders.savePickingMark(
+            orderId: order.id,
+            itemIndex: index,
+            pickedCount: quantity,
+            maxQuantity: max,
+          );
+        }
+      } on Object catch (error) {
+        // 只有最新一次意图的失败才需要处理：中间失败会被后续写覆盖（绝对值契约）
+        if (!mounted || _markSeq[index] != seq) return;
+        showToast(context, app.describeError(error), danger: true);
+        try {
+          // 以服务端为准回读，且只回滚这一行，不动其它行的在途乐观态
+          final List<PickingMark> marks =
+              await _repos.orders.pickingMarks(orderId: order.id);
+          if (!mounted || _markSeq[index] != seq) return;
+          PickingMark? server;
+          for (final PickingMark m in marks) {
+            if (m.itemIndex == index) {
+              server = m;
+              break;
+            }
+          }
+          setState(() {
+            if (server == null) {
+              _marks.remove(index);
+            } else {
+              _marks[index] = server;
+            }
+          });
+        } on Object {
+          // 回读也失败时保留乐观值，下次下拉刷新会纠正
+        }
+      }
+    });
+    _markQueue[index] = task;
+  }
 
   Future<void> _togglePickingList(bool visible) => _run(() async {
         final AppState app = AppState.of(context);
@@ -428,7 +485,6 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
               order: order,
               marks: _marks,
               l10n: l10n,
-              busy: _busy,
               onPicked: _setPicked,
             ),
             const VGap(14),
@@ -654,14 +710,12 @@ class _PickingCard extends StatelessWidget {
     required this.order,
     required this.marks,
     required this.l10n,
-    required this.busy,
     required this.onPicked,
   });
 
   final Order order;
   final Map<int, PickingMark> marks;
   final L10n l10n;
-  final bool busy;
   final Future<void> Function(int index, int picked, int max) onPicked;
 
   @override
@@ -687,7 +741,6 @@ class _PickingCard extends StatelessWidget {
             _PickingLine(
               item: items[index],
               picked: (marks[index]?.pickedCount ?? 0).clamp(0, items[index].quantity),
-              busy: busy,
               onChanged: (int value) => onPicked(index, value, items[index].quantity),
             ),
         ],
@@ -700,13 +753,11 @@ class _PickingLine extends StatelessWidget {
   const _PickingLine({
     required this.item,
     required this.picked,
-    required this.busy,
     required this.onChanged,
   });
 
   final OrderItem item;
   final int picked;
-  final bool busy;
   final ValueChanged<int> onChanged;
 
   @override
@@ -745,14 +796,14 @@ class _PickingLine extends StatelessWidget {
             icon: Icons.remove_rounded,
             size: 34,
             color: AppInk.showroom,
-            onPressed: busy || picked <= 0 ? null : () => onChanged(picked - 1),
+            onPressed: picked <= 0 ? null : () => onChanged(picked - 1),
           ),
           const HGap(2),
           RoundIconButton(
             icon: Icons.add_rounded,
             size: 34,
             color: AppInk.showroom,
-            onPressed: busy || picked >= item.quantity ? null : () => onChanged(picked + 1),
+            onPressed: picked >= item.quantity ? null : () => onChanged(picked + 1),
           ),
         ],
       ),
